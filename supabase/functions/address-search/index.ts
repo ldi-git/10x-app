@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import sql from 'npm:mssql'
+import { getConfig } from '../_shared/lib.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -21,25 +22,6 @@ const MOCK_ADDRESSES = [
   { bfe_number: 2379339,   display: 'Pilegårdsparken 87, 3460 Birkerød' },
 ]
 
-function getConfig(): sql.config {
-  const raw = Deno.env.get('GEO_SIF_CONN')
-  if (!raw) throw new Error('GEO_SIF_CONN secret is not configured')
-  const parts = Object.fromEntries(
-    raw.split(';').filter(Boolean).map((s) => {
-      const idx = s.indexOf('=')
-      return [s.slice(0, idx).trim().toLowerCase(), s.slice(idx + 1).trim()]
-    })
-  )
-  const [server, portStr] = (parts['server'] ?? '').split(',')
-  return {
-    server,
-    port: portStr ? parseInt(portStr) : 1433,
-    user: parts['user id'],
-    password: parts['password'],
-    options: { encrypt: false, trustServerCertificate: true },
-    requestTimeout: 12000,
-  }
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -84,7 +66,7 @@ serve(async (req) => {
 
   let pool: sql.ConnectionPool
   try {
-    pool = await sql.connect(getConfig())
+    pool = await sql.connect(getConfig() as sql.config)
   } catch (err) {
     console.error('Failed to connect to geo-sif:', err instanceof Error ? err.message : err)
     return new Response(JSON.stringify({ error: 'Database connection failed' }), {

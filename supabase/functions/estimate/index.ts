@@ -1,19 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import sql from 'npm:mssql'
-import proj4 from 'npm:proj4'
-
-// ETRS89 / UTM zone 32N — Danish national coordinate system used in BBR
-proj4.defs('EPSG:25832', '+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs')
-
-function utmToWgs84(x: number, y: number): { lat: number; lng: number } | null {
-  try {
-    const [lng, lat] = proj4('EPSG:25832', 'WGS84', [x, y]) as [number, number]
-    return { lat: +lat.toFixed(6), lng: +lng.toFixed(6) }
-  } catch {
-    return null
-  }
-}
+import { getConfig, median, utmToWgs84 } from '../_shared/lib.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -197,34 +185,6 @@ const MOCK_COMPARABLES: Record<string, Comparable[]> = {
   ],
 }
 
-function getConfig(): sql.config {
-  const raw = Deno.env.get('GEO_SIF_CONN')
-  if (!raw) throw new Error('GEO_SIF_CONN secret is not configured')
-  const parts = Object.fromEntries(
-    raw.split(';').filter(Boolean).map((s) => {
-      const idx = s.indexOf('=')
-      return [s.slice(0, idx).trim().toLowerCase(), s.slice(idx + 1).trim()]
-    })
-  )
-  const [server, portStr] = (parts['server'] ?? '').split(',')
-  return {
-    server,
-    port: portStr ? parseInt(portStr) : 1433,
-    user: parts['user id'],
-    password: parts['password'],
-    options: { encrypt: false, trustServerCertificate: true },
-    requestTimeout: 12000,
-  }
-}
-
-function median(values: number[]): number {
-  if (values.length === 0) return NaN
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid]
-}
 
 async function fetchMortgageRate(): Promise<number | null> {
   try {
@@ -422,7 +382,9 @@ serve(async (req) => {
     }
     const comparablesKey = `${prop.municipality_code}_${prop.building_use}`
     const mockComparables = MOCK_COMPARABLES[comparablesKey] ?? MOCK_COMPARABLES['0101_120']
-    const pricePerM2Values = mockComparables.map((c) => c.sale_price / c.living_area_m2)
+    const pricePerM2Values = mockComparables
+      .filter((c) => c.living_area_m2 > 0)
+      .map((c) => c.sale_price / c.living_area_m2)
     const pricePerM2Raw = median(pricePerM2Values)
     if (isNaN(pricePerM2Raw)) {
       return new Response(JSON.stringify({ error: 'No comparable sales found for this property' }), {
@@ -484,7 +446,7 @@ serve(async (req) => {
 
   let pool: sql.ConnectionPool
   try {
-    pool = await sql.connect(getConfig())
+    pool = await sql.connect(getConfig() as sql.config)
   } catch (err) {
     console.error('Failed to connect to geo-sif:', err instanceof Error ? err.message : err)
     return new Response(JSON.stringify({ error: 'Database connection failed' }), {
