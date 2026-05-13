@@ -203,7 +203,7 @@ function getConfig(): sql.config {
 }
 
 function median(values: number[]): number {
-  if (values.length === 0) return 0
+  if (values.length === 0) return NaN
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 0
@@ -399,8 +399,18 @@ serve(async (req) => {
     const comparablesKey = `${prop.municipality_code}_${prop.building_use}`
     const mockComparables = MOCK_COMPARABLES[comparablesKey] ?? MOCK_COMPARABLES['0101_120']
     const pricePerM2Values = mockComparables.map((c) => c.sale_price / c.living_area_m2)
-    const pricePerM2 = Math.round(median(pricePerM2Values))
+    const pricePerM2Raw = median(pricePerM2Values)
+    if (isNaN(pricePerM2Raw)) {
+      return new Response(JSON.stringify({ error: 'No comparable sales found for this property' }), {
+        status: 422,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
+    const pricePerM2 = Math.round(pricePerM2Raw)
     const estimatedPrice = Math.round(pricePerM2 * prop.living_area_m2)
+    const mockCoordinates = (prop.lat != null && prop.lng != null)
+      ? { lat: prop.lat, lng: prop.lng }
+      : null
     const interestRate = await fetchMortgageRate()
 
     const units = prop.units?.map((u) => ({
@@ -424,7 +434,7 @@ serve(async (req) => {
       comparables: mockComparables,
       interest_rate: interestRate,
       limited_data: mockComparables.length < 5,
-      coordinates: { lat: prop.lat, lng: prop.lng },
+      ...(mockCoordinates ? { coordinates: mockCoordinates } : {}),
       ...(units && units.length > 1 ? { units } : {}),
     }
 
@@ -533,6 +543,12 @@ serve(async (req) => {
       .map((c) => c.sale_price / c.living_area_m2)
 
     const pricePerM2 = median(pricePerM2Values)
+    if (isNaN(pricePerM2)) {
+      return new Response(JSON.stringify({ error: 'No comparable sales found for this property' }), {
+        status: 422,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
     const estimatedPrice = Math.round(pricePerM2 * living_area_m2)
     const interestRate = await fetchMortgageRate()
 
