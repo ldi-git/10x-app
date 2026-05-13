@@ -551,14 +551,14 @@ serve(async (req) => {
       .filter((c) => c.living_area_m2 > 0)
       .map((c) => c.sale_price / c.living_area_m2)
 
-    const pricePerM2 = median(pricePerM2Values)
+    const pricePerM2 = Math.round(median(pricePerM2Values))
     if (isNaN(pricePerM2)) {
       return new Response(JSON.stringify({ error: 'No comparable sales found for this property' }), {
         status: 422,
         headers: { ...cors, 'Content-Type': 'application/json' },
       })
     }
-    const estimatedPrice = Math.round(pricePerM2 * living_area_m2)
+    const estimatedPrice = pricePerM2 * living_area_m2
     const interestRate = await fetchMortgageRate()
 
     const unitsResult = await pool.request()
@@ -594,7 +594,7 @@ serve(async (req) => {
       bfe_number,
       address: address ?? `BFE ${bfe_number}`,
       estimated_price: estimatedPrice,
-      price_per_m2: Math.round(pricePerM2),
+      price_per_m2: pricePerM2,
       living_area_m2,
       build_year,
       building_use,
@@ -612,7 +612,7 @@ serve(async (req) => {
       bfe_number,
       address_text: response.address,
       estimated_price: estimatedPrice,
-      price_per_m2: Math.round(pricePerM2),
+      price_per_m2: pricePerM2,
       comparable_count: comparables.length,
       living_area_m2,
       build_year,
