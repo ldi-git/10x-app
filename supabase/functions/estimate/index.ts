@@ -184,7 +184,8 @@ const MOCK_COMPARABLES: Record<string, Comparable[]> = {
 }
 
 function getConfig(): sql.config {
-  const raw = Deno.env.get('GEO_SIF_CONN')!
+  const raw = Deno.env.get('GEO_SIF_CONN')
+  if (!raw) throw new Error('GEO_SIF_CONN secret is not configured')
   const parts = Object.fromEntries(
     raw.split(';').filter(Boolean).map((s) => {
       const idx = s.indexOf('=')
@@ -467,7 +468,16 @@ serve(async (req) => {
     })
   }
 
-  const pool = await sql.connect(getConfig())
+  let pool: sql.ConnectionPool
+  try {
+    pool = await sql.connect(getConfig())
+  } catch (err) {
+    console.error('Failed to connect to geo-sif:', err instanceof Error ? err.message : err)
+    return new Response(JSON.stringify({ error: 'Database connection failed' }), {
+      status: 500,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
   try {
     const subjectResult = await pool.request()
       .input('bfe', sql.BigInt, bfe_number)
