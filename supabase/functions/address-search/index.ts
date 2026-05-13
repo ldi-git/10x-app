@@ -48,7 +48,7 @@ serve(async (req) => {
   }
 
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
-  if (q.length < 3) {
+  if (q.length < 3 || q.length > 200) {
     return new Response(JSON.stringify([]), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     })

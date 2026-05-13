@@ -187,10 +187,13 @@ const MOCK_COMPARABLES: Record<string, Comparable[]> = {
 
 
 async function fetchMortgageRate(): Promise<number | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
   try {
     const res = await fetch('https://api.statbank.dk/v1/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         table: 'DNRENTM',
         format: 'JSON',
@@ -208,6 +211,8 @@ async function fetchMortgageRate(): Promise<number | null> {
     return latest ? parseFloat(latest) : null
   } catch {
     return null
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -385,6 +390,7 @@ serve(async (req) => {
     const pricePerM2Values = mockComparables
       .filter((c) => c.living_area_m2 > 0)
       .map((c) => c.sale_price / c.living_area_m2)
+    const filteredComparableCount = pricePerM2Values.length
     const pricePerM2Raw = median(pricePerM2Values)
     if (isNaN(pricePerM2Raw)) {
       return new Response(JSON.stringify({ error: 'No comparable sales found for this property' }), {
@@ -416,7 +422,7 @@ serve(async (req) => {
       build_year: prop.build_year,
       building_use: prop.building_use,
       municipality_code: prop.municipality_code,
-      comparable_count: mockComparables.length,
+      comparable_count: filteredComparableCount,
       comparables: mockComparables,
       interest_rate: interestRate,
       limited_data: mockComparables.length < 5,
@@ -430,7 +436,7 @@ serve(async (req) => {
       address_text: prop.address,
       estimated_price: estimatedPrice,
       price_per_m2: pricePerM2,
-      comparable_count: mockComparables.length,
+      comparable_count: filteredComparableCount,
       living_area_m2: prop.living_area_m2,
       build_year: prop.build_year,
       building_use: prop.building_use,
@@ -536,6 +542,7 @@ serve(async (req) => {
     const pricePerM2Values = comparables
       .filter((c) => c.living_area_m2 > 0)
       .map((c) => c.sale_price / c.living_area_m2)
+    const filteredComparableCount = pricePerM2Values.length
 
     const pricePerM2 = Math.round(median(pricePerM2Values))
     if (isNaN(pricePerM2)) {
@@ -585,7 +592,7 @@ serve(async (req) => {
       build_year,
       building_use,
       municipality_code: kommunekode,
-      comparable_count: comparables.length,
+      comparable_count: filteredComparableCount,
       comparables: comparables.slice(0, 10),
       interest_rate: interestRate,
       limited_data: limitedData,
@@ -599,7 +606,7 @@ serve(async (req) => {
       address_text: response.address,
       estimated_price: estimatedPrice,
       price_per_m2: pricePerM2,
-      comparable_count: comparables.length,
+      comparable_count: filteredComparableCount,
       living_area_m2,
       build_year,
       building_use,

@@ -2,8 +2,9 @@ import {
   assert,
   assertEquals,
   assertAlmostEquals,
+  assertThrows,
 } from 'https://deno.land/std@0.168.0/testing/asserts.ts'
-import { median, parseConnectionString, utmToWgs84 } from './lib.ts'
+import { getConfig, median, parseConnectionString, utmToWgs84 } from './lib.ts'
 
 // ---------------------------------------------------------------------------
 // median()
@@ -93,6 +94,50 @@ Deno.test('parseConnectionString: missing keys produce undefined fields', () => 
   assertEquals(cfg.server, 'geo-sif')
   assertEquals(cfg.user, undefined)
   assertEquals(cfg.password, undefined)
+})
+
+// ---------------------------------------------------------------------------
+// getConfig()
+// ---------------------------------------------------------------------------
+
+Deno.test('getConfig: throws when GEO_SIF_CONN is not set', () => {
+  const saved = Deno.env.get('GEO_SIF_CONN')
+  try {
+    Deno.env.delete('GEO_SIF_CONN')
+    assertThrows(() => getConfig(), Error, 'GEO_SIF_CONN secret is not configured')
+  } finally {
+    if (saved !== undefined) Deno.env.set('GEO_SIF_CONN', saved)
+  }
+})
+
+Deno.test('getConfig: throws when GEO_SIF_CONN is blank whitespace', () => {
+  const saved = Deno.env.get('GEO_SIF_CONN')
+  try {
+    Deno.env.set('GEO_SIF_CONN', '   ')
+    assertThrows(() => getConfig(), Error, 'GEO_SIF_CONN secret is not configured')
+  } finally {
+    if (saved !== undefined) {
+      Deno.env.set('GEO_SIF_CONN', saved)
+    } else {
+      Deno.env.delete('GEO_SIF_CONN')
+    }
+  }
+})
+
+Deno.test('getConfig: parses a valid GEO_SIF_CONN env var', () => {
+  const saved = Deno.env.get('GEO_SIF_CONN')
+  try {
+    Deno.env.set('GEO_SIF_CONN', 'Server=geo-sif,1433;User Id=sa;Password=secret;')
+    const cfg = getConfig()
+    assertEquals(cfg.server, 'geo-sif')
+    assertEquals(cfg.port, 1433)
+  } finally {
+    if (saved !== undefined) {
+      Deno.env.set('GEO_SIF_CONN', saved)
+    } else {
+      Deno.env.delete('GEO_SIF_CONN')
+    }
+  }
 })
 
 // ---------------------------------------------------------------------------

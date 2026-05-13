@@ -50,6 +50,6 @@ export function parseConnectionString(raw: string): DbConfig {
 
 export function getConfig(): DbConfig {
   const raw = Deno.env.get('GEO_SIF_CONN')
-  if (!raw) throw new Error('GEO_SIF_CONN secret is not configured')
+  if (!raw?.trim()) throw new Error('GEO_SIF_CONN secret is not configured')
   return parseConnectionString(raw)
 }

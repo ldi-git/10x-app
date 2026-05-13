@@ -29,6 +29,7 @@ export interface EstimateResult {
   comparables: Comparable[]
   interest_rate: number | null
   limited_data?: boolean
+  persisted?: boolean
   units?: Unit[]
   coordinates?: { lat: number; lng: number }
 }
@@ -60,6 +61,9 @@ export default function EstimateCard({ result }: Props) {
           <div className="estimate-basis">Based on {result.comparable_count} sales</div>
           {result.limited_data && (
             <div className="estimate-warning">Limited data — area constraint widened</div>
+          )}
+          {result.persisted === false && (
+            <div className="estimate-warning">Note: estimate could not be saved to history</div>
           )}
         </div>
 
