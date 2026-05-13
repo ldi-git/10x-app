@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Owner:** Lars Dideriksen / Geomatic  
 **Created:** 2026-05-13  
-**Last Updated:** 2026-05-13 (per-unit pricing, map, geographic comparables, auth, mock mode, ejerbolig filter)
+**Last Updated:** 2026-05-13 (per-unit pricing, map, geographic comparables, auth, mock mode, ejerbolig filter, input validation, error responses)
 
 ## Overview
 
@@ -221,6 +221,17 @@ WHERE ek.overdragelsesmåde            = 'Almindelig fri handel'
 `units` is present only when the building has more than one residential unit (`BBR.Enhed`). Omitted for single-building properties.
 
 `limited_data: true` indicates fewer than 5 comparables were found after all radius-widening fallbacks.
+
+**Error responses:**
+
+| Status | Condition | `error` message |
+|--------|-----------|-----------------|
+| 400 | Request body is not valid JSON | `"Request body must be valid JSON"` |
+| 400 | `bfe_number` missing, not an integer, or ≤ 0 | `"bfe_number must be a positive integer"` |
+| 401 | Missing or invalid `Authorization` header | `"Unauthorized"` |
+| 404 | BFE not found in BBR | `"Property not found"` |
+| 404 | BFE exists but `byg021` is outside 110–199 | `"Not a residential property (BBR use type <code>)"` |
+| 422 | All fallback paths exhausted with zero ejerbolig comparable sales | `"No comparable sales found for this property"` |
 
 ### UI/UX Design
 
