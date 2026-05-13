@@ -380,9 +380,18 @@ serve(async (req) => {
     })
   }
 
-  const { bfe_number } = await req.json()
-  if (!bfe_number) {
-    return new Response(JSON.stringify({ error: 'bfe_number required' }), {
+  let bfe_number: number
+  try {
+    const body = await req.json()
+    bfe_number = body?.bfe_number
+  } catch {
+    return new Response(JSON.stringify({ error: 'Request body must be valid JSON' }), {
+      status: 400,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
+  if (!Number.isInteger(bfe_number) || bfe_number <= 0) {
+    return new Response(JSON.stringify({ error: 'bfe_number must be a positive integer' }), {
       status: 400,
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
