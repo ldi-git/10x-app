@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Owner:** Lars Dideriksen / Geomatic  
 **Created:** 2026-05-13  
-**Last Updated:** 2026-05-13 (map display added)
+**Last Updated:** 2026-05-13 (per-unit pricing, map, geographic comparables, auth, mock mode)
 
 ## Overview
 
@@ -41,6 +41,7 @@ A signed-in user enters an address or BFE number, sees an estimated price with t
 - [ ] I see the comparable transactions used (up to 10): address, sale price, sale date, area
 - [ ] I see the current Danish mortgage base rate as market context
 - [ ] I see the property location on a map (Leaflet + OpenStreetMap, single marker)
+- [ ] For multi-unit buildings (apartments), I see a per-unit price breakdown (each unit's address, area, rooms, and estimated price)
 
 ### As a signed-in user, I want to review my previous estimates so that I can compare valuations over time
 
@@ -73,6 +74,10 @@ A signed-in user enters an address or BFE number, sees an estimated price with t
 
 The frontend never queries geo-sif directly. All DB access is through Edge Functions holding connection strings as secrets.
 
+Both Edge Functions require a valid Supabase JWT (`Authorization: Bearer <token>`). Unauthenticated requests return 401.
+
+A `MOCK_GEO_SIF=true` environment variable (set in `supabase/functions/.env`, gitignored) switches both functions to return fixture data without connecting to geo-sif. This enables local demo without SQL Server credentials. The Nationalbank rate is still fetched live in mock mode.
+
 ### Data Model
 
 **New Supabase table: `estimates`**
@@ -102,6 +107,7 @@ The frontend never queries geo-sif directly. All DB access is through Edge Funct
 | `Stag_Datafordeler_BBR` | `Bygning` | `byg021`, `byg026`, `byg038`, `byg039`, `byg054`, `byg056`, `byg404Koordinat_x/y`, `kommunekode` |
 | `Stag_Datafordeler_BBR` | `Ejendomsrelation` | `bfeNummer`, `ejendomstype`, `kommunekode` |
 | `Stag_Datafordeler_BBR` | `BygningEjendomsrelation` | joins `Bygning` → `Ejendomsrelation` |
+| `Stag_Datafordeler_BBR` | `Enhed` | `enh020EnhedensAnvendelse` (unit use type), `enh026EnhedensSamledeAreal` (unit area), `enh031AntalVærelser` (rooms), `adresseIdentificerer` → DAR Husnummer |
 | `Stag_Datafordeler_DAR` | `Husnummer` | address → BBR building link (`husnummer` FK) |
 | `Stag_Datafordeler_DAR` | `NavngivenVej` | street name |
 | `Stag_Datafordeler_DAR` | `Postnummer` | postal code + city name |
@@ -117,6 +123,7 @@ The frontend never queries geo-sif directly. All DB access is through Edge Funct
    - Geographic distance uses UTM32N Euclidean distance on `byg404Koordinat_x/y` — no projection needed, values are in metres
 3. `price_per_m2` = median(`kontantKøbesum / byg039`) across comparables
 4. `estimated_price` = `price_per_m2 × subject_living_area`
+5. Query `BBR.Enhed` for all residential units within the building (`enh020 BETWEEN 110 AND 199`, `enh026 > 0`). If > 1 unit: compute `unit_estimated_price = price_per_m2 × unit_area` for each and include a `units` array in the response
 5. Fallback: if < 5 comparables, progressively relax constraints:
    - Drop ±30% area constraint (keep 5 km radius)
    - Widen radius to 10 km (no area constraint)
@@ -193,11 +200,20 @@ WHERE ek.overdragelsesmåde            = 'Almindelig fri handel'
     }
   ],
   "interest_rate": 3.35,
-  "coordinates": { "lat": 55.6761, "lng": 12.5683 }
+  "limited_data": false,
+  "coordinates": { "lat": 55.6761, "lng": 12.5683 },
+  "units": [
+    { "address": "Testvej 12, st. th., 2200 København N", "use_type": 140, "area_m2": 88, "rooms": 3, "estimated_price": 2013256 },
+    { "address": "Testvej 12, 1. th., 2200 København N",  "use_type": 140, "area_m2": 92, "rooms": 4, "estimated_price": 2105724 }
+  ]
 }
 ```
 
-`coordinates` is WGS84 (EPSG:4326). Source: BBR `byg404Koordinat_x/y` (ETRS89/UTM32N, EPSG:25832), converted to WGS84 inside the Edge Function. Omitted from response if coordinates are null in BBR.
+`coordinates` is WGS84 (EPSG:4326). Source: BBR `byg404Koordinat_x/y` (ETRS89/UTM32N, EPSG:25832), converted to WGS84 via `npm:proj4` inside the Edge Function. Omitted if BBR coordinates are null.
+
+`units` is present only when the building has more than one residential unit (`BBR.Enhed`). Omitted for single-building properties.
+
+`limited_data: true` indicates fewer than 5 comparables were found after all radius-widening fallbacks.
 
 ### UI/UX Design
 
@@ -244,23 +260,24 @@ Map shows a single marker at the subject property. Clicking the marker opens a p
 ## Implementation Plan
 
 ### Phase 1: Data layer
-- [ ] Write Supabase migration for `estimates` table with RLS
+- [x] Write Supabase migration for `estimates` table with RLS
 
 ### Phase 2: Edge Functions
-- [ ] `address-search`: query DAR (Husnummer + NavngivenVej + Postnummer) with BFE lookup via BBR Ejendomsrelation
-- [ ] `estimate`: BFE → BBR features + comparable sales query (EJF Ejerskifte + Handelsoplysninger) + Nationalbank rate + median calc
+- [x] `address-search`: query DAR (Husnummer + NavngivenVej + Postnummer) with BFE lookup via BBR Ejendomsrelation; JWT auth required
+- [x] `estimate`: BFE → BBR features + geographic comparable sales query (UTM32N distance) + Nationalbank rate + median calc + per-unit pricing via BBR Enhed + UTM32N→WGS84 coordinate conversion via proj4
 
 ### Phase 3: Frontend
-- [ ] Add `/estimate` route to `App.tsx`
-- [ ] `AddressSearch` component — debounced autocomplete
-- [ ] `EstimateCard` — price, property facts, comparables table, rate
-- [ ] `PropertyMap` component — Leaflet map with single marker; popup shows address + estimated price; hidden when `coordinates` absent
-- [ ] `EstimateHistory` — list with delete
+- [x] Add `/estimate` route to `App.tsx`
+- [x] `AddressSearch` component — debounced autocomplete
+- [x] `EstimateCard` — price, property facts, comparables table, rate, unit breakdown
+- [x] `PropertyMap` component — Leaflet map with single marker; popup shows address + estimated price; hidden when `coordinates` absent
+- [x] `EstimateHistory` — list with delete
 
 ### Phase 4: Verify
-- [ ] Test with a known BFE — confirm comparables are open-market only
+- [ ] Test with a known BFE against live geo-sif — confirm comparables are open-market only and geographically scoped
 - [ ] Confirm no reference to `PropertyData_AVM` anywhere in call chain
 - [ ] RLS test: two users cannot see each other's estimates
+- [ ] Verify `byg404Koordinat_x/y` column names and UTM32N values against live BBR schema
 
 ## Testing Strategy
 

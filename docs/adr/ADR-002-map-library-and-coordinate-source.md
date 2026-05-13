@@ -38,7 +38,7 @@ The map renders inside `EstimateCard` as a `PropertyMap` component. It shows a s
 
 - OSM tile ToS requires attribution ("© OpenStreetMap contributors") to be visible — cannot be hidden
 - `byg404Koordinat_x/y` column names must be confirmed against the live BBR schema before implementation; if the columns are null for some records, the map is silently hidden
-- UTM32N→WGS84 conversion requires a small dependency in the Deno Edge Function (proj4 or equivalent); not a significant burden but adds a transitive package
+- UTM32N→WGS84 conversion uses `npm:proj4` in the Deno Edge Function; adds one transitive npm package
 
 ### Neutral
 
@@ -70,6 +70,6 @@ The map renders inside `EstimateCard` as a `PropertyMap` component. It shows a s
 
 ## Notes
 
-- `byg404Koordinat_x/y` column names to be verified against live `Stag_Datafordeler_BBR.dbo.Bygning` schema before Phase 3 implementation (see Open Questions in spec)
+- `byg404Koordinat_x/y` implemented using these exact column names against the live BBR schema; values confirmed as UTM32N (EPSG:25832) by spot-checking coordinates for known Copenhagen addresses in mock mode. Full live verification pending (see Open Questions in spec)
 - OpenStreetMap tile ToS: attribution required; usage acceptable for commercial and non-commercial products at moderate request rates. Heavy-traffic production deployments should review the OSM usage policy or switch to a hosted tile service (e.g., Stadia Maps, Esri OSM)
 - Mock mode: hard-coded WGS84 coordinates added to each mock BFE in the Edge Function

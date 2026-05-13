@@ -28,7 +28,8 @@ We use a **comparable-sales median model** running inside a Supabase Edge Functi
 - Geographic proximity uses UTM32N Euclidean distance on `byg404Koordinat_x/y` (metres); no projection needed. Bounding-box pre-filter + squared-distance check in SQL
 - Fallback if < 5 comparables: drop area constraint; then widen to 10 km; if subject has no BBR coordinates, fall back to municipality-scoped search
 - Compute `median(kontantKøbesum / byg039)` across those comparables
-- Multiply by the subject property's living area to get the estimate
+- Multiply by the subject property's living area to get the building-level estimate
+- For multi-unit buildings: query `BBR.Enhed` for all residential units and compute `price_per_m2 × unit_area` for each — surfaced as a `units` array in the response alongside the building-level estimate
 - Enrich with the current Nationalbank lending rate (`DNRENTM/OIRNAA`) as market context
 - All geo-sif queries execute inside the Edge Function — the frontend never touches the database directly
 
@@ -91,3 +92,4 @@ The join path from BFE to building features is:
 - `BygningEjendomsrelation` does not expose a named `ejendomsrelation` FK column — the correct join is `Ejendomsrelation.id_lokalId = BygningEjendomsrelation.bygningPåFremmedGrund`. Verified against live data.
 - Fallback strategy (geographic path): 5 km + area ±30% → 5 km no area constraint → 10 km no area constraint → `limited_data: true` if still < 5. If subject has no BBR coordinates, fall back to municipality-scoped search with the same area/widening steps.
 - Residential use codes confirmed against live BBR data (2026-05-13): 110 (939k), 120 (8.1M), 121, 122, 130 (1.5M), 131, 132, 140 (964k), 150, 160, 185, 190. All 12 codes fall within 110–199; the `BETWEEN 110 AND 199` filter captures all of them without enumerating each.
+- Per-unit pricing applies the same `price_per_m2` to each `BBR.Enhed` unit area. The building-level estimate (`price_per_m2 × byg039`) and each unit estimate (`price_per_m2 × enh026`) are both returned; they are derived from the same median and are therefore internally consistent.
