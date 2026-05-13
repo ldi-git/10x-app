@@ -582,7 +582,7 @@ serve(async (req) => {
         headers: { ...cors, 'Content-Type': 'application/json' },
       })
     }
-    const estimatedPrice = pricePerM2 * living_area_m2
+    const estimatedPrice = Math.round(pricePerM2 * living_area_m2)
     const interestRate = await fetchMortgageRate()
 
     const unitsResult = await pool.request()
