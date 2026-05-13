@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Owner:** Lars Dideriksen / Geomatic  
 **Created:** 2026-05-13  
-**Last Updated:** 2026-05-13
+**Last Updated:** 2026-05-13 (residential-only filter added)
 
 ## Overview
 
@@ -13,7 +13,7 @@ A signed-in user enters an address or BFE number, sees an estimated price with t
 
 ## Goals
 
-- Estimate the open-market value of any Danish residential property, keyed by BFE number
+- Estimate the open-market value of any Danish **residential** property (BBR `byg021` 110–190), keyed by BFE number
 - Base the estimate solely on open-market sales from `Stag_Datafordeler_EJF` (filter: `overdragelsesmåde` = free trade), not the existing AVM
 - Show the comparable transactions that drive the estimate so the result is fully explainable
 - Enrich with one external market signal: current mortgage rate from Danmarks Nationalbank
@@ -24,7 +24,8 @@ A signed-in user enters an address or BFE number, sees an estimated price with t
 - Using or referencing `PropertyData_AVM` (geo-thor) in any way
 - Training a full ML regression pipeline — comparable-sales median is the model for this iteration
 - Non-Danish properties
-- Commercial or agricultural properties (residential only)
+- Non-residential properties — only BBR `byg021` codes 110–190 (residential use) are in scope; commercial (200+), industrial (300+), and agricultural buildings are excluded
+- Properties with `byg021` outside 110–190 return a "not a residential property" error
 - Legal or financial guarantee on the estimate
 
 ## User Stories
@@ -34,6 +35,7 @@ A signed-in user enters an address or BFE number, sees an estimated price with t
 **Acceptance Criteria:**
 - [ ] I can type a partial address and get autocomplete suggestions from `Stag_Datafordeler_DAR`
 - [ ] After selecting a property, I see an estimated price within 15 seconds
+- [ ] If the property is not residential (BBR `byg021` outside 110–190) I see a clear error message
 - [ ] The estimate uses only open-market sales (`overdragelsesmåde` = free trade, last 3 years)
 - [ ] I see the key property facts: building use type, living area (m²), year built, municipality
 - [ ] I see the comparable transactions used (up to 10): address, sale price, sale date, area
@@ -137,6 +139,7 @@ WHERE ek.overdragelsesmåde        = 'Almindelig fri handel'
   AND ek.registreringTil          IS NULL
   AND ek.overtagelsesdato         >= DATEADD(year, -3, GETDATE())
   AND h.kontantKøbesum            > 0
+  AND b.byg021BygningensAnvendelse BETWEEN 110 AND 199  -- residential only
   AND b.kommunekode               = @kommunekode
   AND b.byg021BygningensAnvendelse = @building_use
   AND b.byg039BygningensSamledeBoligAreal

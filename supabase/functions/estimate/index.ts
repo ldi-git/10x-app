@@ -128,6 +128,7 @@ async function findComparables(
       AND ek.registreringTil          IS NULL
       AND ek.overtagelsesdato         >= DATEADD(year, -3, GETDATE())
       AND h.kontantKøbesum            > 0
+      AND b.byg021BygningensAnvendelse BETWEEN 110 AND 199
       AND b.kommunekode               = @kommunekode
       AND b.byg021BygningensAnvendelse = @buildingUse
       AND b.byg039BygningensSamledeBoligAreal > 0
@@ -240,12 +241,32 @@ serve(async (req) => {
           AND er.registreringTil IS NULL
           AND ber.registreringTil IS NULL
           AND b.registreringTil IS NULL
+          AND b.byg021BygningensAnvendelse BETWEEN 110 AND 199
           AND b.byg039BygningensSamledeBoligAreal > 0
         ORDER BY b.byg039BygningensSamledeBoligAreal DESC
       `)
 
     if (subjectResult.recordset.length === 0) {
-      return new Response(JSON.stringify({ error: 'Property not found' }), {
+      // Could be not found OR non-residential — check which
+      const anyResult = await pool.request()
+        .input('bfe', sql.BigInt, bfe_number)
+        .query(`
+          SELECT TOP 1 b.byg021BygningensAnvendelse AS building_use
+          FROM Stag_Datafordeler_BBR.dbo.Ejendomsrelation er
+          JOIN Stag_Datafordeler_BBR.dbo.BygningEjendomsrelation ber
+            ON er.id_lokalId = ber.bygningPåFremmedGrund
+          JOIN Stag_Datafordeler_BBR.dbo.Bygning b
+            ON ber.bygning = b.id_lokalId
+          WHERE er.bfeNummer = @bfe
+            AND er.registreringTil IS NULL
+            AND ber.registreringTil IS NULL
+            AND b.registreringTil IS NULL
+        `)
+      const buildingUseCode = anyResult.recordset[0]?.building_use
+      const msg = buildingUseCode != null
+        ? `Not a residential property (BBR use type ${buildingUseCode})`
+        : 'Property not found'
+      return new Response(JSON.stringify({ error: msg }), {
         status: 404,
         headers: { ...cors, 'Content-Type': 'application/json' },
       })
