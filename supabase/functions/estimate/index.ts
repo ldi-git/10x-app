@@ -463,7 +463,7 @@ serve(async (req) => {
     })
     if (insertError) console.error('Failed to persist estimate:', insertError.message)
 
-    return new Response(JSON.stringify(response), {
+    return new Response(JSON.stringify({ ...response, persisted: !insertError }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
@@ -632,7 +632,7 @@ serve(async (req) => {
     })
     if (insertError) console.error('Failed to persist estimate:', insertError.message)
 
-    return new Response(JSON.stringify(response), {
+    return new Response(JSON.stringify({ ...response, persisted: !insertError }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   } finally {

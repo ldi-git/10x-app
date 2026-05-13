@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Owner:** Lars Dideriksen / Geomatic  
 **Created:** 2026-05-13  
-**Last Updated:** 2026-05-13 (per-unit pricing, map, geographic comparables, auth, mock mode, ejerbolig filter, input validation, error responses)
+**Last Updated:** 2026-05-13 (per-unit pricing, map, geographic comparables, auth, mock mode, ejerbolig filter, input validation, error responses, persisted flag)
 
 ## Overview
 
@@ -221,6 +221,8 @@ WHERE ek.overdragelsesmåde            = 'Almindelig fri handel'
 `units` is present only when the building has more than one residential unit (`BBR.Enhed`). Omitted for single-building properties.
 
 `limited_data: true` indicates fewer than 5 comparables were found after all radius-widening fallbacks.
+
+`persisted: true` indicates the estimate was successfully saved to the `estimates` table. `persisted: false` means the DB write failed (e.g. expired JWT, RLS violation, transient Supabase error) — the estimate data is still returned so the user can see the result, but it will not appear in history. The frontend should surface a warning when `persisted` is false.
 
 **Error responses:**
 
