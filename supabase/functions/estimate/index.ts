@@ -53,6 +53,7 @@ const MOCK_PROPERTIES: Record<number, {
   400301001: { address: 'Algade 33, 9000 Aalborg',             living_area_m2: 122, build_year: 1958, building_use: 120, municipality_code: '0851', lat: 57.048800, lng:  9.920500 },
   500401001: { address: 'Skomagergade 14, 4000 Roskilde',      living_area_m2: 139, build_year: 1974, building_use: 120, municipality_code: '0265', lat: 55.646000, lng: 12.081000 },
   600501001: { address: 'Skolegade 5, 7100 Vejle',             living_area_m2: 116, build_year: 1983, building_use: 120, municipality_code: '0630', lat: 55.711300, lng:  9.536700 },
+  2379339:   { address: 'Pilegårdsparken 87, 3460 Birkerød',   living_area_m2: 135, build_year: 1968, building_use: 120, municipality_code: '0230', lat: 55.842594, lng: 12.405423 },
 }
 
 type Comparable = { bfe: number; sale_price: number; sale_date: string; living_area_m2: number; address?: string }
@@ -180,6 +181,19 @@ const MOCK_COMPARABLES: Record<string, Comparable[]> = {
     { bfe: 735008, sale_price: 2150000, sale_date: '2024-01-01', living_area_m2:  95 },
     { bfe: 735009, sale_price: 2400000, sale_date: '2023-10-01', living_area_m2: 105 },
     { bfe: 735010, sale_price: 2700000, sale_date: '2023-07-01', living_area_m2: 119 },
+  ],
+  // Rudersdal (Birkerød) — etagebolig (use_type 120) — market-level ~33 000 kr/m²
+  '0230_120': [
+    { bfe: 760001, sale_price: 4500000, sale_date: '2025-10-01', living_area_m2: 136 },
+    { bfe: 760002, sale_price: 3200000, sale_date: '2025-07-01', living_area_m2:  97 },
+    { bfe: 760003, sale_price: 5100000, sale_date: '2025-04-01', living_area_m2: 154 },
+    { bfe: 760004, sale_price: 2750000, sale_date: '2025-01-01', living_area_m2:  84 },
+    { bfe: 760005, sale_price: 4200000, sale_date: '2024-10-01', living_area_m2: 128 },
+    { bfe: 760006, sale_price: 2950000, sale_date: '2024-07-01', living_area_m2:  91 },
+    { bfe: 760007, sale_price: 5600000, sale_date: '2024-04-01', living_area_m2: 168 },
+    { bfe: 760008, sale_price: 3500000, sale_date: '2024-01-01', living_area_m2: 107 },
+    { bfe: 760009, sale_price: 3100000, sale_date: '2023-10-01', living_area_m2:  95 },
+    { bfe: 760010, sale_price: 4650000, sale_date: '2023-07-01', living_area_m2: 142 },
   ],
 }
 
