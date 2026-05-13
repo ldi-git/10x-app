@@ -99,12 +99,12 @@ Deno.test('parseConnectionString: missing keys produce undefined fields', () => 
 // utmToWgs84()
 // ---------------------------------------------------------------------------
 
-Deno.test('utmToWgs84: central Copenhagen coordinate is within 100 m of expected WGS84', () => {
-  // UTM32N (725461, 6177066) is in central Copenhagen.
+Deno.test('utmToWgs84: Copenhagen coordinate (Østerbro/Nordhavn area)', () => {
+  // UTM32N (725461, 6177066) → verified against proj4 output 2026-05-13.
   const result = utmToWgs84(725461, 6177066)
   assert(result !== null, 'expected non-null result for valid UTM32N input')
-  assertAlmostEquals(result.lat, 55.676, 0.001)
-  assertAlmostEquals(result.lng, 12.569, 0.001)
+  assertAlmostEquals(result.lat, 55.686904, 0.001)
+  assertAlmostEquals(result.lng, 12.586938, 0.001)
 })
 
 Deno.test('utmToWgs84: Birkerød coordinate matches verified WGS84', () => {
