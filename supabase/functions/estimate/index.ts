@@ -7,6 +7,35 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const MOCK_PROPERTIES: Record<number, {
+  address: string; living_area_m2: number; build_year: number
+  building_use: number; municipality_code: string
+}> = {
+  100654163: { address: 'Rådhuspladsen 7, 1550 København V',   living_area_m2: 187, build_year: 1903, building_use: 120, municipality_code: '0101' },
+  100442001: { address: 'Østerbrogade 42, 2100 København Ø',   living_area_m2: 134, build_year: 1962, building_use: 120, municipality_code: '0101' },
+  100442002: { address: 'Nørrebrogade 18, 2200 København N',   living_area_m2:  98, build_year: 1935, building_use: 130, municipality_code: '0101' },
+  100442003: { address: 'Vesterbrogade 55, 1620 København V',  living_area_m2: 112, build_year: 1948, building_use: 130, municipality_code: '0101' },
+  200103001: { address: 'Aarhus Allé 12, 8000 Aarhus C',       living_area_m2: 158, build_year: 1971, building_use: 120, municipality_code: '0751' },
+  200103002: { address: 'Åboulevarden 27, 8000 Aarhus C',      living_area_m2: 203, build_year: 1989, building_use: 120, municipality_code: '0751' },
+  300201001: { address: 'Kongensgade 8, 5000 Odense C',        living_area_m2: 145, build_year: 1967, building_use: 120, municipality_code: '0461' },
+  400301001: { address: 'Algade 33, 9000 Aalborg',             living_area_m2: 122, build_year: 1958, building_use: 120, municipality_code: '0851' },
+  500401001: { address: 'Skomagergade 14, 4000 Roskilde',      living_area_m2: 139, build_year: 1974, building_use: 120, municipality_code: '0265' },
+  600501001: { address: 'Skolegade 5, 7100 Vejle',             living_area_m2: 116, build_year: 1983, building_use: 120, municipality_code: '0630' },
+}
+
+const MOCK_COMPARABLES = [
+  { bfe: 100399001, address: 'Nabovej 4',        sale_price: 3100000, sale_date: '2025-03-12', living_area_m2: 138 },
+  { bfe: 100399002, address: 'Sidegaden 7',       sale_price: 3400000, sale_date: '2025-01-08', living_area_m2: 151 },
+  { bfe: 100399003, address: 'Parkstræde 11',     sale_price: 2950000, sale_date: '2024-11-22', living_area_m2: 129 },
+  { bfe: 100399004, address: 'Bakkevej 3',        sale_price: 3650000, sale_date: '2024-09-15', living_area_m2: 162 },
+  { bfe: 100399005, address: 'Engvej 19',         sale_price: 3200000, sale_date: '2024-07-30', living_area_m2: 141 },
+  { bfe: 100399006, address: 'Lindegårdsvej 2',   sale_price: 2875000, sale_date: '2024-06-11', living_area_m2: 127 },
+  { bfe: 100399007, address: 'Rosenvænget 8',     sale_price: 3550000, sale_date: '2024-04-05', living_area_m2: 156 },
+  { bfe: 100399008, address: 'Møllevej 14',       sale_price: 3025000, sale_date: '2024-02-18', living_area_m2: 133 },
+  { bfe: 100399009, address: 'Solbakken 6',       sale_price: 3350000, sale_date: '2023-12-03', living_area_m2: 148 },
+  { bfe: 100399010, address: 'Skovvænget 22',     sale_price: 2800000, sale_date: '2023-10-14', living_area_m2: 124 },
+]
+
 function getConfig(): sql.config {
   const raw = Deno.env.get('GEO_SIF_CONN')!
   const parts = Object.fromEntries(
@@ -51,10 +80,8 @@ async function fetchMortgageRate(): Promise<number | null> {
       }),
     })
     const json = await res.json()
-    // Response shape: { columns: [...], data: [{ INSTRUMENT, Tid, INDHOLD }] }
     const rows: { INDHOLD: string }[] = json.data ?? []
     if (rows.length === 0) return null
-    // Last entry is the most recent period
     const latest = rows[rows.length - 1].INDHOLD
     return latest ? parseFloat(latest) : null
   } catch {
@@ -113,7 +140,6 @@ async function findComparables(
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
-  // Auth check
   const authHeader = req.headers.get('authorization')
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -144,16 +170,62 @@ serve(async (req) => {
     })
   }
 
+  if (Deno.env.get('MOCK_GEO_SIF') === 'true') {
+    const prop = MOCK_PROPERTIES[bfe_number] ?? {
+      address: `BFE ${bfe_number}`,
+      living_area_m2: 130,
+      build_year: 1972,
+      building_use: 120,
+      municipality_code: '0101',
+    }
+    const pricePerM2Values = MOCK_COMPARABLES.map((c) => c.sale_price / c.living_area_m2)
+    const pricePerM2 = Math.round(median(pricePerM2Values))
+    const estimatedPrice = Math.round(pricePerM2 * prop.living_area_m2)
+    const interestRate = await fetchMortgageRate()
+
+    const response = {
+      bfe_number,
+      address: prop.address,
+      estimated_price: estimatedPrice,
+      price_per_m2: pricePerM2,
+      living_area_m2: prop.living_area_m2,
+      build_year: prop.build_year,
+      building_use: prop.building_use,
+      municipality_code: prop.municipality_code,
+      comparable_count: MOCK_COMPARABLES.length,
+      comparables: MOCK_COMPARABLES,
+      interest_rate: interestRate,
+      limited_data: false,
+    }
+
+    await supabase.from('estimates').insert({
+      user_id: user.id,
+      bfe_number,
+      address_text: prop.address,
+      estimated_price: estimatedPrice,
+      price_per_m2: pricePerM2,
+      comparable_count: MOCK_COMPARABLES.length,
+      living_area_m2: prop.living_area_m2,
+      build_year: prop.build_year,
+      building_use: prop.building_use,
+      municipality_code: prop.municipality_code,
+      interest_rate: interestRate,
+    })
+
+    return new Response(JSON.stringify(response), {
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
+
   const pool = await sql.connect(getConfig())
   try {
-    // Step A: subject property features
     const subjectResult = await pool.request()
       .input('bfe', sql.BigInt, bfe_number)
       .query(`
         SELECT TOP 1
           b.byg039BygningensSamledeBoligAreal AS living_area_m2,
           b.byg021BygningensAnvendelse        AS building_use,
-          b.[byg026Opførelsesår]         AS build_year,
+          b.[byg026Opførelsesår]              AS build_year,
           b.kommunekode,
           hn.adgangsadressebetegnelse         AS address
         FROM Stag_Datafordeler_BBR.dbo.Ejendomsrelation er
@@ -182,25 +254,19 @@ serve(async (req) => {
     const subject = subjectResult.recordset[0]
     const { living_area_m2, building_use, build_year, kommunekode, address } = subject
 
-    // Step B: comparables with fallback
     let comparables = await findComparables(pool, kommunekode, building_use, living_area_m2)
     let limitedData = false
-
     if (comparables.length < 5) {
-      // Widen: drop area constraint
       comparables = await findComparables(pool, kommunekode, building_use, living_area_m2, true)
       limitedData = comparables.length < 5
     }
 
-    // Step C: median price/m²
     const pricePerM2Values = comparables
       .filter((c) => c.living_area_m2 > 0)
       .map((c) => c.sale_price / c.living_area_m2)
 
     const pricePerM2 = median(pricePerM2Values)
     const estimatedPrice = Math.round(pricePerM2 * living_area_m2)
-
-    // Step D: mortgage rate (non-blocking)
     const interestRate = await fetchMortgageRate()
 
     const response = {
@@ -209,7 +275,7 @@ serve(async (req) => {
       estimated_price: estimatedPrice,
       price_per_m2: Math.round(pricePerM2),
       living_area_m2,
-      build_year: build_year,
+      build_year,
       building_use,
       municipality_code: kommunekode,
       comparable_count: comparables.length,
@@ -218,7 +284,6 @@ serve(async (req) => {
       limited_data: limitedData,
     }
 
-    // Save to history
     await supabase.from('estimates').insert({
       user_id: user.id,
       bfe_number,
@@ -227,7 +292,7 @@ serve(async (req) => {
       price_per_m2: Math.round(pricePerM2),
       comparable_count: comparables.length,
       living_area_m2,
-      build_year: build_year,
+      build_year,
       building_use,
       municipality_code: kommunekode,
       interest_rate: interestRate,

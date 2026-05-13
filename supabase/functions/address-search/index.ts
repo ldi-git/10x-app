@@ -6,9 +6,21 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const MOCK_ADDRESSES = [
+  { bfe_number: 100654163, display: 'Rådhuspladsen 7, 1550 København V' },
+  { bfe_number: 100442001, display: 'Østerbrogade 42, 2100 København Ø' },
+  { bfe_number: 100442002, display: 'Nørrebrogade 18, 2200 København N' },
+  { bfe_number: 100442003, display: 'Vesterbrogade 55, 1620 København V' },
+  { bfe_number: 200103001, display: 'Aarhus Allé 12, 8000 Aarhus C' },
+  { bfe_number: 200103002, display: 'Åboulevarden 27, 8000 Aarhus C' },
+  { bfe_number: 300201001, display: 'Kongensgade 8, 5000 Odense C' },
+  { bfe_number: 400301001, display: 'Algade 33, 9000 Aalborg' },
+  { bfe_number: 500401001, display: 'Skomagergade 14, 4000 Roskilde' },
+  { bfe_number: 600501001, display: 'Skolegade 5, 7100 Vejle' },
+]
+
 function getConfig(): sql.config {
   const raw = Deno.env.get('GEO_SIF_CONN')!
-  // Expected format: Server=host,port;User Id=u;Password=p;TrustServerCertificate=True
   const parts = Object.fromEntries(
     raw.split(';').filter(Boolean).map((s) => {
       const idx = s.indexOf('=')
@@ -32,6 +44,16 @@ serve(async (req) => {
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
   if (q.length < 3) {
     return new Response(JSON.stringify([]), {
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (Deno.env.get('MOCK_GEO_SIF') === 'true') {
+    const lower = q.toLowerCase()
+    const results = MOCK_ADDRESSES.filter((a) =>
+      a.display.toLowerCase().includes(lower)
+    ).slice(0, 10)
+    return new Response(JSON.stringify(results), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
