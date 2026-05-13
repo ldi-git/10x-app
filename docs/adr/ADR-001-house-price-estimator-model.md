@@ -1,7 +1,7 @@
 # ADR-001: House Price Estimator — Comparable-Sales Median Model
 
 **Status:** Accepted  
-**Date:** 2026-05-13 (updated 2026-05-13: residential-only scope; geographic comparables)  
+**Date:** 2026-05-13 (updated 2026-05-13: residential-only scope; geographic comparables; ejerbolig-only comparables)  
 **Deciders:** Lars Dideriksen / Geomatic  
 **Technical Story:** docs/specs/house-price-estimator.md
 
@@ -25,6 +25,7 @@ We use a **comparable-sales median model** running inside a Supabase Edge Functi
 
 - Restrict scope to **residential properties only**: BBR `byg021BygningensAnvendelse` codes 110–199 (villa, terraced house, apartment, student housing, residential institution, annex, other year-round residence). Non-residential BFEs are rejected at the subject-lookup step with a descriptive error
 - Find open-market sales (`overdragelsesmåde = 'Almindelig fri handel'`) within 5 km of the subject property, same building use type (`byg021`), living area within ±30%, within the last 3 years — comparables also filtered to `byg021 BETWEEN 110 AND 199`
+- Restrict comparables to **owner-occupied properties only**: `EXISTS` in `BBR.Enhed` where `enh023Boligtype = '1'` (ejerbolig). This excludes rental properties (`'2'`), almene boliger (`'3'`), and andelsboliger (`'4'`). Andelsbolig sales are particularly important to exclude: their prices are regulated by the cooperative's valuation ceiling and are systematically lower than free-market ejerbolig prices
 - Geographic proximity uses UTM32N Euclidean distance on `byg404Koordinat_x/y` (metres); no projection needed. Bounding-box pre-filter + squared-distance check in SQL
 - Fallback if < 5 comparables: drop area constraint; then widen to 10 km; if subject has no BBR coordinates, fall back to municipality-scoped search
 - Compute `median(kontantKøbesum / byg039)` across those comparables
@@ -48,6 +49,7 @@ The join path from BFE to building features is:
 - Edge Function isolation means geo-sif credentials never reach the browser
 - Residential scope (`byg021` 110–199) ensures comparables are always like-for-like; mixing residential and commercial sales would produce meaningless price/m² medians
 - Geographic proximity (5–10 km) ensures comparables reflect the same local market rather than a whole municipality, which can span very different price zones
+- Owner-occupied filter (`enh023Boligtype = '1'`) ensures price/m² medians are computed over like-for-like free-market transactions; andelsbolig prices are 30–60% below ejerbolig prices in the same area and would severely distort estimates without this filter
 
 ### Negative
 
@@ -56,6 +58,7 @@ The join path from BFE to building features is:
 - Properties where `byg404Koordinat_x/y` is null in BBR fall back to municipality-scoped search — less precise but still functional
 - Median price/m² ignores non-linear size effects (larger homes typically sell at a lower per-m² price)
 - Cross-database joins across `Stag_Datafordeler_EJF`, `Stag_Datafordeler_BBR`, and `Stag_Datafordeler_DAR` on a single SQL Server instance add query complexity and can be slow without proper indexing
+- `enh023Boligtype` reflects the unit's **current** ownership classification, not its classification at the time of the comparable sale. A property converted from ejerbolig to rental after sale would be excluded. This is an accepted limitation — BBR stores current state only, and retroactive misclassification is rare
 
 ### Neutral
 
@@ -93,3 +96,5 @@ The join path from BFE to building features is:
 - Fallback strategy (geographic path): 5 km + area ±30% → 5 km no area constraint → 10 km no area constraint → `limited_data: true` if still < 5. If subject has no BBR coordinates, fall back to municipality-scoped search with the same area/widening steps.
 - Residential use codes confirmed against live BBR data (2026-05-13): 110 (939k), 120 (8.1M), 121, 122, 130 (1.5M), 131, 132, 140 (964k), 150, 160, 185, 190. All 12 codes fall within 110–199; the `BETWEEN 110 AND 199` filter captures all of them without enumerating each.
 - Per-unit pricing applies the same `price_per_m2` to each `BBR.Enhed` unit area. The building-level estimate (`price_per_m2 × byg039`) and each unit estimate (`price_per_m2 × enh026`) are both returned; they are derived from the same median and are therefore internally consistent.
+- `BBR.Enhed.enh023Boligtype` confirmed against live data (2026-05-13): `'1'` = ejerbolig (6.6 M units), `'2'` = privat udlejning (5.1 M), `'3'` = almene boliger (5.1 M), `'4'` = andelsbolig (60 k), `null` = not set (3.3 M). The EXISTS filter targets `'1'` only; remaining types are excluded from comparable selection.
+- Mock comparables are keyed by `${municipality_code}_${building_use}` to produce distinct, market-appropriate estimates per city. Copenhagen `0101_120` comparables use real BFEs from geo-sif staging; other municipality sets use market-calibrated synthetic data (geo-sif staging coverage outside Copenhagen is negligible).

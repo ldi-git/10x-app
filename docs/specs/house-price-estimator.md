@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Owner:** Lars Dideriksen / Geomatic  
 **Created:** 2026-05-13  
-**Last Updated:** 2026-05-13 (per-unit pricing, map, geographic comparables, auth, mock mode)
+**Last Updated:** 2026-05-13 (per-unit pricing, map, geographic comparables, auth, mock mode, ejerbolig filter)
 
 ## Overview
 
@@ -76,7 +76,7 @@ The frontend never queries geo-sif directly. All DB access is through Edge Funct
 
 Both Edge Functions require a valid Supabase JWT (`Authorization: Bearer <token>`). Unauthenticated requests return 401.
 
-A `MOCK_GEO_SIF=true` environment variable (set in `supabase/functions/.env`, gitignored) switches both functions to return fixture data without connecting to geo-sif. This enables local demo without SQL Server credentials. The Nationalbank rate is still fetched live in mock mode.
+A `MOCK_GEO_SIF=true` environment variable (set in `supabase/functions/.env`, gitignored) switches both functions to return fixture data without connecting to geo-sif. This enables local demo without SQL Server credentials. The Nationalbank rate is still fetched live in mock mode. Mock comparable sets are keyed by `${municipality_code}_${building_use}` so each mock property returns a distinct estimate at market-appropriate price levels for its city.
 
 ### Data Model
 
@@ -107,7 +107,7 @@ A `MOCK_GEO_SIF=true` environment variable (set in `supabase/functions/.env`, gi
 | `Stag_Datafordeler_BBR` | `Bygning` | `byg021`, `byg026`, `byg038`, `byg039`, `byg054`, `byg056`, `byg404Koordinat_x/y`, `kommunekode` |
 | `Stag_Datafordeler_BBR` | `Ejendomsrelation` | `bfeNummer`, `ejendomstype`, `kommunekode` |
 | `Stag_Datafordeler_BBR` | `BygningEjendomsrelation` | joins `Bygning` → `Ejendomsrelation` |
-| `Stag_Datafordeler_BBR` | `Enhed` | `enh020EnhedensAnvendelse` (unit use type), `enh026EnhedensSamledeAreal` (unit area), `enh031AntalVærelser` (rooms), `adresseIdentificerer` → DAR Husnummer |
+| `Stag_Datafordeler_BBR` | `Enhed` | `enh020EnhedensAnvendelse` (unit use type), `enh023Boligtype` (ownership type — `'1'`=ejerbolig, `'2'`=privat udlejning, `'3'`=almene boliger, `'4'`=andelsbolig), `enh026EnhedensSamledeAreal` (unit area), `enh031AntalVærelser` (rooms), `adresseIdentificerer` → DAR Husnummer |
 | `Stag_Datafordeler_DAR` | `Husnummer` | address → BBR building link (`husnummer` FK) |
 | `Stag_Datafordeler_DAR` | `NavngivenVej` | street name |
 | `Stag_Datafordeler_DAR` | `Postnummer` | postal code + city name |
@@ -120,6 +120,7 @@ A `MOCK_GEO_SIF=true` environment variable (set in `supabase/functions/.env`, gi
 2. Find open-market comparables:
    - Join `Ejerskifte` (filter: `overdragelsesmåde` = open market, `overtagelsesdato` last 3 years, `registreringTil IS NULL`) → `Handelsoplysninger` (`kontantKøbesum > 0`)
    - Same `byg021BygningensAnvendelse` (building use type), within 5 km of the subject property, living area within ±30%
+   - **Owner-occupied only:** requires `EXISTS` in `BBR.Enhed` with `enh023Boligtype = '1'` — excludes rental properties, almene boliger (social housing), and andelsboliger (cooperative, price-regulated)
    - Geographic distance uses UTM32N Euclidean distance on `byg404Koordinat_x/y` — no projection needed, values are in metres
 3. `price_per_m2` = median(`kontantKøbesum / byg039`) across comparables
 4. `estimated_price` = `price_per_m2 × subject_living_area`
@@ -161,6 +162,12 @@ WHERE ek.overdragelsesmåde            = 'Almindelig fri handel'
     POWER(CAST(b.byg404Koordinat_x AS FLOAT) - @subjectX, 2) +
     POWER(CAST(b.byg404Koordinat_y AS FLOAT) - @subjectY, 2)
   ) <= POWER(@radiusMeters, 2)
+  AND EXISTS (
+    SELECT 1 FROM Stag_Datafordeler_BBR.dbo.Enhed e
+    WHERE e.bygning = b.id_lokalId
+      AND e.registreringTil IS NULL
+      AND e.enh023Boligtype = '1'  -- ejerbolig only; excludes rental, social, andelsbolig
+  )
   AND b.byg039BygningensSamledeBoligAreal
       BETWEEN @living_area * 0.7 AND @living_area * 1.3  -- dropped in widened fallback
 ```

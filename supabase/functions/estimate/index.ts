@@ -55,18 +55,133 @@ const MOCK_PROPERTIES: Record<number, {
   600501001: { address: 'Skolegade 5, 7100 Vejle',             living_area_m2: 116, build_year: 1983, building_use: 120, municipality_code: '0630', lat: 55.711300, lng:  9.536700 },
 }
 
-const MOCK_COMPARABLES = [
-  { bfe: 100399001, address: 'Nabovej 4',        sale_price: 3100000, sale_date: '2025-03-12', living_area_m2: 138 },
-  { bfe: 100399002, address: 'Sidegaden 7',       sale_price: 3400000, sale_date: '2025-01-08', living_area_m2: 151 },
-  { bfe: 100399003, address: 'Parkstræde 11',     sale_price: 2950000, sale_date: '2024-11-22', living_area_m2: 129 },
-  { bfe: 100399004, address: 'Bakkevej 3',        sale_price: 3650000, sale_date: '2024-09-15', living_area_m2: 162 },
-  { bfe: 100399005, address: 'Engvej 19',         sale_price: 3200000, sale_date: '2024-07-30', living_area_m2: 141 },
-  { bfe: 100399006, address: 'Lindegårdsvej 2',   sale_price: 2875000, sale_date: '2024-06-11', living_area_m2: 127 },
-  { bfe: 100399007, address: 'Rosenvænget 8',     sale_price: 3550000, sale_date: '2024-04-05', living_area_m2: 156 },
-  { bfe: 100399008, address: 'Møllevej 14',       sale_price: 3025000, sale_date: '2024-02-18', living_area_m2: 133 },
-  { bfe: 100399009, address: 'Solbakken 6',       sale_price: 3350000, sale_date: '2023-12-03', living_area_m2: 148 },
-  { bfe: 100399010, address: 'Skovvænget 22',     sale_price: 2800000, sale_date: '2023-10-14', living_area_m2: 124 },
-]
+type Comparable = { bfe: number; sale_price: number; sale_date: string; living_area_m2: number; address?: string }
+
+// Keyed by `${municipality_code}_${building_use}`.
+// 0101_120: real open-market sales from Stag_Datafordeler_EJF (kommunekode 0101, byg021=120, 2024-2026).
+// All other keys: realistic market-level data (see geo-sif query results — staging DB has no coverage
+// outside Copenhagen, so prices are calibrated to known Danish market levels per municipality).
+const MOCK_COMPARABLES: Record<string, Comparable[]> = {
+  // København — etagebolig (use_type 120) — real geo-sif BFEs
+  '0101_120': [
+    { bfe: 701811, sale_price: 6795000, sale_date: '2026-06-01', living_area_m2: 120 },
+    { bfe: 701741, sale_price: 6700000, sale_date: '2026-03-01', living_area_m2: 101 },
+    { bfe: 701738, sale_price: 6000000, sale_date: '2026-04-01', living_area_m2:  98 },
+    { bfe: 706327, sale_price: 6750000, sale_date: '2026-02-01', living_area_m2: 122 },
+    { bfe: 701913, sale_price: 6895000, sale_date: '2025-06-01', living_area_m2: 128 },
+    { bfe: 701266, sale_price: 7495000, sale_date: '2025-06-01', living_area_m2: 140 },
+    { bfe: 701877, sale_price: 5495000, sale_date: '2025-04-01', living_area_m2: 114 },
+    { bfe: 701290, sale_price: 6000000, sale_date: '2025-03-01', living_area_m2: 120 },
+    { bfe: 702297, sale_price: 5800000, sale_date: '2025-03-01', living_area_m2:  97 },
+    { bfe: 706600, sale_price: 4950000, sale_date: '2024-11-15', living_area_m2: 112 },
+  ],
+  // København — rækkehus (use_type 130) — ~38 000 kr/m²
+  '0101_130': [
+    { bfe: 710001, sale_price: 4650000, sale_date: '2025-10-01', living_area_m2: 118 },
+    { bfe: 710002, sale_price: 3550000, sale_date: '2025-08-01', living_area_m2: 104 },
+    { bfe: 710003, sale_price: 5200000, sale_date: '2025-06-01', living_area_m2: 135 },
+    { bfe: 710004, sale_price: 4100000, sale_date: '2025-03-01', living_area_m2: 108 },
+    { bfe: 710005, sale_price: 4900000, sale_date: '2024-12-01', living_area_m2: 128 },
+    { bfe: 710006, sale_price: 3750000, sale_date: '2024-09-01', living_area_m2:  98 },
+    { bfe: 710007, sale_price: 5600000, sale_date: '2024-06-01', living_area_m2: 145 },
+    { bfe: 710008, sale_price: 4450000, sale_date: '2024-03-01', living_area_m2: 116 },
+    { bfe: 710009, sale_price: 3250000, sale_date: '2023-12-01', living_area_m2:  88 },
+    { bfe: 710010, sale_price: 4350000, sale_date: '2023-09-01', living_area_m2: 113 },
+  ],
+  // København — etagehus/bygning (use_type 140) — 1 real BFE + market-level data ~66 000 kr/m²
+  '0101_140': [
+    { bfe: 706758, sale_price: 16500000, sale_date: '2024-03-01', living_area_m2: 186 },
+    { bfe: 711001, sale_price: 28000000, sale_date: '2025-09-01', living_area_m2: 420 },
+    { bfe: 711002, sale_price: 18500000, sale_date: '2025-06-01', living_area_m2: 280 },
+    { bfe: 711003, sale_price: 35000000, sale_date: '2025-03-01', living_area_m2: 530 },
+    { bfe: 711004, sale_price: 22000000, sale_date: '2024-12-01', living_area_m2: 335 },
+    { bfe: 711005, sale_price: 14500000, sale_date: '2024-09-01', living_area_m2: 220 },
+    { bfe: 711006, sale_price: 42000000, sale_date: '2024-06-01', living_area_m2: 635 },
+    { bfe: 711007, sale_price: 12000000, sale_date: '2024-01-01', living_area_m2: 183 },
+    { bfe: 711008, sale_price: 31500000, sale_date: '2023-10-01', living_area_m2: 476 },
+    { bfe: 711009, sale_price: 19500000, sale_date: '2023-07-01', living_area_m2: 296 },
+  ],
+  // Aarhus — etagebolig (use_type 120) — market-level ~28 000 kr/m²
+  // (BFE 745466 from staging DB excluded: 13 314 kr/m² indicates andelsbolig, now filtered by enh023Boligtype='1')
+  '0751_120': [
+    { bfe: 746010, sale_price:  3050000, sale_date: '2024-10-01', living_area_m2: 108 },
+    { bfe: 746001, sale_price:  4550000, sale_date: '2025-10-01', living_area_m2: 155 },
+    { bfe: 746002, sale_price:  3200000, sale_date: '2025-07-01', living_area_m2: 112 },
+    { bfe: 746003, sale_price:  5100000, sale_date: '2025-04-01', living_area_m2: 178 },
+    { bfe: 746004, sale_price:  2750000, sale_date: '2025-01-01', living_area_m2:  97 },
+    { bfe: 746005, sale_price:  4200000, sale_date: '2024-09-01', living_area_m2: 146 },
+    { bfe: 746006, sale_price:  2450000, sale_date: '2024-06-01', living_area_m2:  86 },
+    { bfe: 746007, sale_price:  3750000, sale_date: '2024-03-01', living_area_m2: 132 },
+    { bfe: 746008, sale_price:  2950000, sale_date: '2023-12-01', living_area_m2: 103 },
+    { bfe: 746009, sale_price:  4900000, sale_date: '2023-09-01', living_area_m2: 171 },
+  ],
+  // Aarhus — etagehus/bygning (use_type 140) — market-level ~27 000 kr/m²
+  '0751_140': [
+    { bfe: 747001, sale_price: 15500000, sale_date: '2025-10-01', living_area_m2: 567 },
+    { bfe: 747002, sale_price:  9800000, sale_date: '2025-07-01', living_area_m2: 372 },
+    { bfe: 747003, sale_price: 19500000, sale_date: '2025-04-01', living_area_m2: 715 },
+    { bfe: 747004, sale_price: 12500000, sale_date: '2025-01-01', living_area_m2: 462 },
+    { bfe: 747005, sale_price:  8200000, sale_date: '2024-10-01', living_area_m2: 308 },
+    { bfe: 747006, sale_price: 14000000, sale_date: '2024-07-01', living_area_m2: 520 },
+    { bfe: 747007, sale_price: 11000000, sale_date: '2024-04-01', living_area_m2: 410 },
+    { bfe: 747008, sale_price: 17000000, sale_date: '2024-01-01', living_area_m2: 630 },
+    { bfe: 747009, sale_price: 13500000, sale_date: '2023-10-01', living_area_m2: 498 },
+    { bfe: 747010, sale_price:  7000000, sale_date: '2023-07-01', living_area_m2: 265 },
+  ],
+  // Odense — etagebolig (use_type 120) — market-level ~20 000 kr/m²
+  '0461_120': [
+    { bfe: 755001, sale_price: 3200000, sale_date: '2025-10-01', living_area_m2: 148 },
+    { bfe: 755002, sale_price: 2100000, sale_date: '2025-07-01', living_area_m2: 103 },
+    { bfe: 755003, sale_price: 3800000, sale_date: '2025-04-01', living_area_m2: 174 },
+    { bfe: 755004, sale_price: 1700000, sale_date: '2025-01-01', living_area_m2:  86 },
+    { bfe: 755005, sale_price: 2800000, sale_date: '2024-10-01', living_area_m2: 133 },
+    { bfe: 755006, sale_price: 1550000, sale_date: '2024-07-01', living_area_m2:  78 },
+    { bfe: 755007, sale_price: 3500000, sale_date: '2024-04-01', living_area_m2: 161 },
+    { bfe: 755008, sale_price: 2250000, sale_date: '2024-01-01', living_area_m2: 111 },
+    { bfe: 755009, sale_price: 2000000, sale_date: '2023-10-01', living_area_m2:  99 },
+    { bfe: 755010, sale_price: 2500000, sale_date: '2023-07-01', living_area_m2: 122 },
+  ],
+  // Aalborg — etagebolig (use_type 120) — market-level ~20 000 kr/m²
+  // (staging DB has terrace house sales 752687-752702; no type-120 data available)
+  '0851_120': [
+    { bfe: 757001, sale_price: 2200000, sale_date: '2025-10-01', living_area_m2: 110 },
+    { bfe: 757002, sale_price: 1650000, sale_date: '2025-07-01', living_area_m2:  84 },
+    { bfe: 757003, sale_price: 2600000, sale_date: '2025-04-01', living_area_m2: 131 },
+    { bfe: 757004, sale_price: 1450000, sale_date: '2025-01-01', living_area_m2:  74 },
+    { bfe: 757005, sale_price: 2400000, sale_date: '2024-10-01', living_area_m2: 121 },
+    { bfe: 757006, sale_price: 1800000, sale_date: '2024-07-01', living_area_m2:  91 },
+    { bfe: 757007, sale_price: 2850000, sale_date: '2024-04-01', living_area_m2: 144 },
+    { bfe: 757008, sale_price: 1950000, sale_date: '2024-01-01', living_area_m2:  99 },
+    { bfe: 757009, sale_price: 2100000, sale_date: '2023-10-01', living_area_m2: 107 },
+    { bfe: 757010, sale_price: 2300000, sale_date: '2023-07-01', living_area_m2: 116 },
+  ],
+  // Roskilde — etagebolig (use_type 120) — market-level ~31 000 kr/m²
+  '0265_120': [
+    { bfe: 732001, sale_price: 4300000, sale_date: '2025-10-01', living_area_m2: 138 },
+    { bfe: 732002, sale_price: 3100000, sale_date: '2025-07-01', living_area_m2: 101 },
+    { bfe: 732003, sale_price: 5100000, sale_date: '2025-04-01', living_area_m2: 163 },
+    { bfe: 732004, sale_price: 2600000, sale_date: '2025-01-01', living_area_m2:  85 },
+    { bfe: 732005, sale_price: 4700000, sale_date: '2024-10-01', living_area_m2: 152 },
+    { bfe: 732006, sale_price: 2350000, sale_date: '2024-07-01', living_area_m2:  77 },
+    { bfe: 732007, sale_price: 5600000, sale_date: '2024-04-01', living_area_m2: 179 },
+    { bfe: 732008, sale_price: 3600000, sale_date: '2024-01-01', living_area_m2: 116 },
+    { bfe: 732009, sale_price: 2800000, sale_date: '2023-10-01', living_area_m2:  91 },
+    { bfe: 732010, sale_price: 4050000, sale_date: '2023-07-01', living_area_m2: 130 },
+  ],
+  // Vejle — etagebolig (use_type 120) — market-level ~23 000 kr/m²
+  '0630_120': [
+    { bfe: 735001, sale_price: 2600000, sale_date: '2025-10-01', living_area_m2: 112 },
+    { bfe: 735002, sale_price: 1900000, sale_date: '2025-07-01', living_area_m2:  84 },
+    { bfe: 735003, sale_price: 3100000, sale_date: '2025-04-01', living_area_m2: 134 },
+    { bfe: 735004, sale_price: 1650000, sale_date: '2025-01-01', living_area_m2:  74 },
+    { bfe: 735005, sale_price: 2850000, sale_date: '2024-10-01', living_area_m2: 123 },
+    { bfe: 735006, sale_price: 1750000, sale_date: '2024-07-01', living_area_m2:  79 },
+    { bfe: 735007, sale_price: 3400000, sale_date: '2024-04-01', living_area_m2: 147 },
+    { bfe: 735008, sale_price: 2150000, sale_date: '2024-01-01', living_area_m2:  95 },
+    { bfe: 735009, sale_price: 2400000, sale_date: '2023-10-01', living_area_m2: 105 },
+    { bfe: 735010, sale_price: 2700000, sale_date: '2023-07-01', living_area_m2: 119 },
+  ],
+}
 
 function getConfig(): sql.config {
   const raw = Deno.env.get('GEO_SIF_CONN')!
@@ -121,8 +236,6 @@ async function fetchMortgageRate(): Promise<number | null> {
   }
 }
 
-type Comparable = { bfe: number; sale_price: number; sale_date: string; living_area_m2: number; address?: string }
-
 // Primary: geographic radius search using UTM32N Euclidean distance (metres)
 async function findComparablesByDistance(
   pool: sql.ConnectionPool,
@@ -176,6 +289,12 @@ async function findComparablesByDistance(
           POWER(CAST(b.byg404Koordinat_x AS FLOAT) - @subjectX, 2) +
           POWER(CAST(b.byg404Koordinat_y AS FLOAT) - @subjectY, 2)
         ) <= @radiusSq
+        AND EXISTS (
+          SELECT 1 FROM Stag_Datafordeler_BBR.dbo.Enhed e
+          WHERE e.bygning = b.id_lokalId
+            AND e.registreringTil IS NULL
+            AND e.enh023Boligtype = '1'
+        )
         ${areaClause}
     `)
 
@@ -224,6 +343,12 @@ async function findComparablesByMunicipality(
         AND b.kommunekode                   = @kommunekode
         AND b.byg021BygningensAnvendelse    = @buildingUse
         AND b.byg039BygningensSamledeBoligAreal > 0
+        AND EXISTS (
+          SELECT 1 FROM Stag_Datafordeler_BBR.dbo.Enhed e
+          WHERE e.bygning = b.id_lokalId
+            AND e.registreringTil IS NULL
+            AND e.enh023Boligtype = '1'
+        )
         ${areaClause}
     `)
 
@@ -271,7 +396,9 @@ serve(async (req) => {
       building_use: 120,
       municipality_code: '0101',
     }
-    const pricePerM2Values = MOCK_COMPARABLES.map((c) => c.sale_price / c.living_area_m2)
+    const comparablesKey = `${prop.municipality_code}_${prop.building_use}`
+    const mockComparables = MOCK_COMPARABLES[comparablesKey] ?? MOCK_COMPARABLES['0101_120']
+    const pricePerM2Values = mockComparables.map((c) => c.sale_price / c.living_area_m2)
     const pricePerM2 = Math.round(median(pricePerM2Values))
     const estimatedPrice = Math.round(pricePerM2 * prop.living_area_m2)
     const interestRate = await fetchMortgageRate()
@@ -293,10 +420,10 @@ serve(async (req) => {
       build_year: prop.build_year,
       building_use: prop.building_use,
       municipality_code: prop.municipality_code,
-      comparable_count: MOCK_COMPARABLES.length,
-      comparables: MOCK_COMPARABLES,
+      comparable_count: mockComparables.length,
+      comparables: mockComparables,
       interest_rate: interestRate,
-      limited_data: false,
+      limited_data: mockComparables.length < 5,
       coordinates: { lat: prop.lat, lng: prop.lng },
       ...(units && units.length > 1 ? { units } : {}),
     }
@@ -307,7 +434,7 @@ serve(async (req) => {
       address_text: prop.address,
       estimated_price: estimatedPrice,
       price_per_m2: pricePerM2,
-      comparable_count: MOCK_COMPARABLES.length,
+      comparable_count: mockComparables.length,
       living_area_m2: prop.living_area_m2,
       build_year: prop.build_year,
       building_use: prop.building_use,
