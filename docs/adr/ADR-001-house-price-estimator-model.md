@@ -1,7 +1,7 @@
 # ADR-001: House Price Estimator — Comparable-Sales Median Model
 
 **Status:** Accepted  
-**Date:** 2026-05-13  
+**Date:** 2026-05-13 (updated 2026-05-13: residential-only scope)  
 **Deciders:** Lars Dideriksen / Geomatic  
 **Technical Story:** docs/specs/house-price-estimator.md
 
@@ -15,6 +15,7 @@ We have access to open-market transaction data in `Stag_Datafordeler_EJF` (Ejers
 2. Be fully explainable (users must see which transactions drove the estimate)
 3. Deliver results in under 15 seconds
 4. Be buildable within a workshop session without a data science pipeline
+5. Cover only properties where people can live — commercial, industrial, and agricultural buildings are out of scope
 
 The key architectural question is: **what estimation approach to use**, and **where to execute it**.
 
@@ -22,7 +23,8 @@ The key architectural question is: **what estimation approach to use**, and **wh
 
 We use a **comparable-sales median model** running inside a Supabase Edge Function:
 
-- Find open-market sales (`overdragelsesmåde = 'Almindelig fri handel'`) in the same municipality, same building use type (`byg021`), living area within ±30%, within the last 3 years
+- Restrict scope to **residential properties only**: BBR `byg021BygningensAnvendelse` codes 110–199 (villa, terraced house, apartment, student housing, residential institution, annex, other year-round residence). Non-residential BFEs are rejected at the subject-lookup step with a descriptive error
+- Find open-market sales (`overdragelsesmåde = 'Almindelig fri handel'`) in the same municipality, same building use type (`byg021`), living area within ±30%, within the last 3 years — comparables are also filtered to `byg021 BETWEEN 110 AND 199`
 - Compute `median(kontantKøbesum / byg039)` across those comparables
 - Multiply by the subject property's living area to get the estimate
 - Enrich with the current Nationalbank lending rate (`DNRENTM/OIRNAA`) as market context
@@ -41,6 +43,7 @@ The join path from BFE to building features is:
 - Median is robust to outlier sales (foreclosures, family transfers at atypical prices)
 - Open-market filter (`'Almindelig fri handel'`) removes 7.7 M clean records from noise — the signal is strong
 - Edge Function isolation means geo-sif credentials never reach the browser
+- Residential scope (`byg021` 110–199) ensures comparables are always like-for-like; mixing residential and commercial sales would produce meaningless price/m² medians
 
 ### Negative
 
@@ -82,3 +85,4 @@ The join path from BFE to building features is:
 - `overdragelsesmåde = 'Almindelig fri handel'` confirmed as the open-market code by querying `DISTINCT overdragelsesmåde` on live data (7,685,768 records). `'Almindelig fri handel særlige vilkår'` (2,599 records) is excluded for now.
 - `BygningEjendomsrelation` does not expose a named `ejendomsrelation` FK column — the correct join is `Ejendomsrelation.id_lokalId = BygningEjendomsrelation.bygningPåFremmedGrund`. Verified against live data.
 - Fallback strategy: if fewer than 5 comparables found with area constraint, drop the ±30% area filter. If still fewer than 5, a `limited_data` flag is returned to the UI.
+- Residential use codes confirmed against live BBR data (2026-05-13): 110 (939k), 120 (8.1M), 121, 122, 130 (1.5M), 131, 132, 140 (964k), 150, 160, 185, 190. All 12 codes fall within 110–199; the `BETWEEN 110 AND 199` filter captures all of them without enumerating each.
