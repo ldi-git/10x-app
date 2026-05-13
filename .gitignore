@@ -9,6 +9,11 @@ frontend/dist
 frontend/.env.local
 frontend/.env*.local
 
+# Playwright
+frontend/e2e/.auth
+frontend/playwright-report
+frontend/test-results
+
 # OS
 .DS_Store
 Thumbs.db
