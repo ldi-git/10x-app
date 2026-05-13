@@ -23,7 +23,12 @@ const MOCK_ADDRESSES = [
 ]
 
 
-serve(async (req) => {
+// deno-lint-ignore no-explicit-any
+export interface SearchHandlerDeps {
+  supabase?: any
+}
+
+export async function handler(req: Request, deps: SearchHandlerDeps = {}): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   const authHeader = req.headers.get('authorization')
@@ -34,7 +39,7 @@ serve(async (req) => {
     })
   }
 
-  const supabase = createClient(
+  const supabase = deps.supabase ?? createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
@@ -108,4 +113,8 @@ serve(async (req) => {
   } finally {
     pool.close()
   }
-})
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req))
+}

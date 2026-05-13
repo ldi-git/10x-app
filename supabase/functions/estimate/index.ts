@@ -335,7 +335,13 @@ async function findComparablesByMunicipality(
   return result.recordset
 }
 
-serve(async (req) => {
+// deno-lint-ignore no-explicit-any
+export interface EstimateHandlerDeps {
+  supabase?: any
+  fetchRate?: () => Promise<number | null>
+}
+
+export async function handler(req: Request, deps: EstimateHandlerDeps = {}): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   const authHeader = req.headers.get('authorization')
@@ -346,7 +352,7 @@ serve(async (req) => {
     })
   }
 
-  const supabase = createClient(
+  const supabase = deps.supabase ?? createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
@@ -403,7 +409,7 @@ serve(async (req) => {
     const mockCoordinates = (prop.lat != null && prop.lng != null)
       ? { lat: prop.lat, lng: prop.lng }
       : null
-    const interestRate = await fetchMortgageRate()
+    const interestRate = await (deps.fetchRate ?? fetchMortgageRate)()
 
     const units = prop.units?.map((u) => ({
       address: u.address,
@@ -551,7 +557,7 @@ serve(async (req) => {
       })
     }
     const estimatedPrice = Math.round(pricePerM2 * living_area_m2)
-    const interestRate = await fetchMortgageRate()
+    const interestRate = await (deps.fetchRate ?? fetchMortgageRate)()
 
     const unitsResult = await pool.request()
       .input('bygning_id', sql.NVarChar, bygning_id)
@@ -620,4 +626,8 @@ serve(async (req) => {
   } finally {
     pool.close()
   }
-})
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req))
+}
