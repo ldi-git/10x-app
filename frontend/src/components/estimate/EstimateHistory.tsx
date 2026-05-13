@@ -31,7 +31,11 @@ export default function EstimateHistory({ session }: { session: Session }) {
   }, [session.user.id])
 
   async function deleteRow(id: string) {
-    await supabase.from('estimates').delete().eq('id', id)
+    const { error } = await supabase.from('estimates').delete().eq('id', id)
+    if (error) {
+      console.error('Failed to delete estimate:', error.message)
+      return
+    }
     setRows((prev) => prev.filter((r) => r.id !== id))
   }
 

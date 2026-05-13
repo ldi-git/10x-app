@@ -1,9 +1,19 @@
+import PropertyMap from './PropertyMap'
+
 interface Comparable {
   bfe: number
   sale_price: number
   sale_date: string
   living_area_m2: number
   address?: string
+}
+
+interface Unit {
+  address: string
+  use_type: number
+  area_m2: number
+  rooms: number
+  estimated_price: number
 }
 
 export interface EstimateResult {
@@ -19,6 +29,8 @@ export interface EstimateResult {
   comparables: Comparable[]
   interest_rate: number | null
   limited_data?: boolean
+  units?: Unit[]
+  coordinates?: { lat: number; lng: number }
 }
 
 function fmt(n: number) {
@@ -63,9 +75,43 @@ export default function EstimateCard({ result }: Props) {
         </div>
       </div>
 
+      {result.coordinates && (
+        <PropertyMap
+          coordinates={result.coordinates}
+          address={result.address}
+          estimatedPrice={result.estimated_price}
+        />
+      )}
+
       {result.interest_rate != null && (
         <div className="estimate-rate">
           Mortgage base rate: <strong>{result.interest_rate}%</strong> (Nationalbanken)
+        </div>
+      )}
+
+      {result.units && result.units.length > 1 && (
+        <div className="units">
+          <h4>Unit estimates ({result.units.length} units)</h4>
+          <table className="comp-table">
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>Area</th>
+                <th>Rooms</th>
+                <th>Estimated price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.units.map((u, i) => (
+                <tr key={i}>
+                  <td>{u.address || '—'}</td>
+                  <td>{u.area_m2} m²</td>
+                  <td>{u.rooms}</td>
+                  <td>{fmt(u.estimated_price)} kr</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

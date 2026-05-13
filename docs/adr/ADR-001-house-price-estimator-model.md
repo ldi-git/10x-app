@@ -1,7 +1,7 @@
 # ADR-001: House Price Estimator — Comparable-Sales Median Model
 
 **Status:** Accepted  
-**Date:** 2026-05-13 (updated 2026-05-13: residential-only scope)  
+**Date:** 2026-05-13 (updated 2026-05-13: residential-only scope; geographic comparables)  
 **Deciders:** Lars Dideriksen / Geomatic  
 **Technical Story:** docs/specs/house-price-estimator.md
 
@@ -24,7 +24,9 @@ The key architectural question is: **what estimation approach to use**, and **wh
 We use a **comparable-sales median model** running inside a Supabase Edge Function:
 
 - Restrict scope to **residential properties only**: BBR `byg021BygningensAnvendelse` codes 110–199 (villa, terraced house, apartment, student housing, residential institution, annex, other year-round residence). Non-residential BFEs are rejected at the subject-lookup step with a descriptive error
-- Find open-market sales (`overdragelsesmåde = 'Almindelig fri handel'`) in the same municipality, same building use type (`byg021`), living area within ±30%, within the last 3 years — comparables are also filtered to `byg021 BETWEEN 110 AND 199`
+- Find open-market sales (`overdragelsesmåde = 'Almindelig fri handel'`) within 5 km of the subject property, same building use type (`byg021`), living area within ±30%, within the last 3 years — comparables also filtered to `byg021 BETWEEN 110 AND 199`
+- Geographic proximity uses UTM32N Euclidean distance on `byg404Koordinat_x/y` (metres); no projection needed. Bounding-box pre-filter + squared-distance check in SQL
+- Fallback if < 5 comparables: drop area constraint; then widen to 10 km; if subject has no BBR coordinates, fall back to municipality-scoped search
 - Compute `median(kontantKøbesum / byg039)` across those comparables
 - Multiply by the subject property's living area to get the estimate
 - Enrich with the current Nationalbank lending rate (`DNRENTM/OIRNAA`) as market context
@@ -44,11 +46,13 @@ The join path from BFE to building features is:
 - Open-market filter (`'Almindelig fri handel'`) removes 7.7 M clean records from noise — the signal is strong
 - Edge Function isolation means geo-sif credentials never reach the browser
 - Residential scope (`byg021` 110–199) ensures comparables are always like-for-like; mixing residential and commercial sales would produce meaningless price/m² medians
+- Geographic proximity (5–10 km) ensures comparables reflect the same local market rather than a whole municipality, which can span very different price zones
 
 ### Negative
 
 - No adjustment for property-specific quality differences (condition, renovation, view) — two houses of the same size and type will get the same estimate even if one is renovated
-- Rural BFEs with few comparables produce less reliable estimates; the area-widening fallback helps but doesn't eliminate the problem
+- Rural BFEs with few sales within 5–10 km produce less reliable estimates; the progressive radius fallback helps but doesn't eliminate the problem
+- Properties where `byg404Koordinat_x/y` is null in BBR fall back to municipality-scoped search — less precise but still functional
 - Median price/m² ignores non-linear size effects (larger homes typically sell at a lower per-m² price)
 - Cross-database joins across `Stag_Datafordeler_EJF`, `Stag_Datafordeler_BBR`, and `Stag_Datafordeler_DAR` on a single SQL Server instance add query complexity and can be slow without proper indexing
 
@@ -79,10 +83,11 @@ The join path from BFE to building features is:
 
 - Address search uses `Stag_Datafordeler_DAR.Husnummer.adgangsadressebetegnelse` for pre-formatted display strings and `adgangTilBygning` as the direct FK to `Bygning` — no join to `NavngivenVej`/`Postnummer` required (confirmed against live schema 2026-05-13)
 - RLS on the `estimates` table ensures user history isolation — no separate access control layer needed
+- ADR-002: map library and tile provider choice (Leaflet + OpenStreetMap); `byg404Koordinat_x/y` are also the coordinate source for the property map marker
 
 ## Notes
 
 - `overdragelsesmåde = 'Almindelig fri handel'` confirmed as the open-market code by querying `DISTINCT overdragelsesmåde` on live data (7,685,768 records). `'Almindelig fri handel særlige vilkår'` (2,599 records) is excluded for now.
 - `BygningEjendomsrelation` does not expose a named `ejendomsrelation` FK column — the correct join is `Ejendomsrelation.id_lokalId = BygningEjendomsrelation.bygningPåFremmedGrund`. Verified against live data.
-- Fallback strategy: if fewer than 5 comparables found with area constraint, drop the ±30% area filter. If still fewer than 5, a `limited_data` flag is returned to the UI.
+- Fallback strategy (geographic path): 5 km + area ±30% → 5 km no area constraint → 10 km no area constraint → `limited_data: true` if still < 5. If subject has no BBR coordinates, fall back to municipality-scoped search with the same area/widening steps.
 - Residential use codes confirmed against live BBR data (2026-05-13): 110 (939k), 120 (8.1M), 121, 122, 130 (1.5M), 131, 132, 140 (964k), 150, 160, 185, 190. All 12 codes fall within 110–199; the `BETWEEN 110 AND 199` filter captures all of them without enumerating each.

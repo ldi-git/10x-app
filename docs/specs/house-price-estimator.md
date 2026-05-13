@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Owner:** Lars Dideriksen / Geomatic  
 **Created:** 2026-05-13  
-**Last Updated:** 2026-05-13 (residential-only filter added)
+**Last Updated:** 2026-05-13 (map display added)
 
 ## Overview
 
@@ -40,6 +40,7 @@ A signed-in user enters an address or BFE number, sees an estimated price with t
 - [ ] I see the key property facts: building use type, living area (m²), year built, municipality
 - [ ] I see the comparable transactions used (up to 10): address, sale price, sale date, area
 - [ ] I see the current Danish mortgage base rate as market context
+- [ ] I see the property location on a map (Leaflet + OpenStreetMap, single marker)
 
 ### As a signed-in user, I want to review my previous estimates so that I can compare valuations over time
 
@@ -112,20 +113,23 @@ The frontend never queries geo-sif directly. All DB access is through Edge Funct
 1. Look up subject BFE → `Ejendomsrelation.bfeNummer` → join `BygningEjendomsrelation` on `er.id_lokalId = ber.bygningPåFremmedGrund` → join `Bygning` on `ber.bygning = b.id_lokalId` (living area, type, year, municipality)
 2. Find open-market comparables:
    - Join `Ejerskifte` (filter: `overdragelsesmåde` = open market, `overtagelsesdato` last 3 years, `registreringTil IS NULL`) → `Handelsoplysninger` (`kontantKøbesum > 0`)
-   - Same municipality, same `byg021BygningensAnvendelse` (building use type), living area within ±30%
+   - Same `byg021BygningensAnvendelse` (building use type), within 5 km of the subject property, living area within ±30%
+   - Geographic distance uses UTM32N Euclidean distance on `byg404Koordinat_x/y` — no projection needed, values are in metres
 3. `price_per_m2` = median(`kontantKøbesum / byg039`) across comparables
 4. `estimated_price` = `price_per_m2 × subject_living_area`
-5. Fallback: if < 5 comparables in municipality, drop the size constraint; if still < 5, widen to region
+5. Fallback: if < 5 comparables, progressively relax constraints:
+   - Drop ±30% area constraint (keep 5 km radius)
+   - Widen radius to 10 km (no area constraint)
+   - If BBR coordinates are null for subject: fall back to municipality-scoped search with same area/widening logic
+   - If still < 5: return `limited_data: true` flag to UI
 
 **Core query pattern (Edge Function SQL):**
 ```sql
-SELECT
-  ek.bestemtFastEjendomBFENr       AS bfe,
-  h.kontantKøbesum                 AS sale_price,
-  ek.overtagelsesdato              AS sale_date,
-  b.byg039BygningensSamledeBoligAreal AS living_area_m2,
-  b.byg021BygningensAnvendelse     AS building_use,
-  b.kommunekode
+SELECT TOP 20
+  ek.bestemtFastEjendomBFENr          AS bfe,
+  h.kontantKøbesum                    AS sale_price,
+  CONVERT(varchar(10), ek.overtagelsesdato, 23) AS sale_date,
+  b.byg039BygningensSamledeBoligAreal AS living_area_m2
 FROM Stag_Datafordeler_EJF.dbo.Ejerskifte ek
 JOIN Stag_Datafordeler_EJF.dbo.Handelsoplysninger h
   ON ek.handelsoplysningerLokalId = h.id_lokalId
@@ -135,16 +139,26 @@ JOIN Stag_Datafordeler_BBR.dbo.BygningEjendomsrelation ber
   ON er.id_lokalId = ber.bygningPåFremmedGrund
 JOIN Stag_Datafordeler_BBR.dbo.Bygning b
   ON ber.bygning = b.id_lokalId
-WHERE ek.overdragelsesmåde        = 'Almindelig fri handel'
-  AND ek.registreringTil          IS NULL
-  AND ek.overtagelsesdato         >= DATEADD(year, -3, GETDATE())
-  AND h.kontantKøbesum            > 0
-  AND b.byg021BygningensAnvendelse BETWEEN 110 AND 199  -- residential only
-  AND b.kommunekode               = @kommunekode
-  AND b.byg021BygningensAnvendelse = @building_use
+WHERE ek.overdragelsesmåde            = 'Almindelig fri handel'
+  AND ek.registreringTil              IS NULL
+  AND ek.overtagelsesdato             >= DATEADD(year, -3, GETDATE())
+  AND h.kontantKøbesum                > 0
+  AND b.byg021BygningensAnvendelse    BETWEEN 110 AND 199
+  AND b.byg021BygningensAnvendelse    = @building_use
+  AND b.byg039BygningensSamledeBoligAreal > 0
+  AND b.byg404Koordinat_x             IS NOT NULL
+  -- bounding box pre-filter (index-friendly), then exact circle check
+  AND b.byg404Koordinat_x             BETWEEN @subjectX - @radiusMeters AND @subjectX + @radiusMeters
+  AND b.byg404Koordinat_y             BETWEEN @subjectY - @radiusMeters AND @subjectY + @radiusMeters
+  AND (
+    POWER(CAST(b.byg404Koordinat_x AS FLOAT) - @subjectX, 2) +
+    POWER(CAST(b.byg404Koordinat_y AS FLOAT) - @subjectY, 2)
+  ) <= POWER(@radiusMeters, 2)
   AND b.byg039BygningensSamledeBoligAreal
-      BETWEEN @living_area * 0.7 AND @living_area * 1.3
+      BETWEEN @living_area * 0.7 AND @living_area * 1.3  -- dropped in widened fallback
 ```
+
+`@subjectX / @subjectY` are the subject building's `byg404Koordinat_x/y` (UTM32N, metres). The bounding-box filter pre-reduces the scan to a square; the squared-distance check then refines to the exact circle.
 
 ### API Design
 
@@ -178,9 +192,12 @@ WHERE ek.overdragelsesmåde        = 'Almindelig fri handel'
       "living_area_m2": 138
     }
   ],
-  "interest_rate": 3.35
+  "interest_rate": 3.35,
+  "coordinates": { "lat": 55.6761, "lng": 12.5683 }
 }
 ```
+
+`coordinates` is WGS84 (EPSG:4326). Source: BBR `byg404Koordinat_x/y` (ETRS89/UTM32N, EPSG:25832), converted to WGS84 inside the Edge Function. Omitted from response if coordinates are null in BBR.
 
 ### UI/UX Design
 
@@ -199,6 +216,15 @@ WHERE ek.overdragelsesmåde        = 'Almindelig fri handel'
 │  │  Based on 14 sales        Built:  1978         │  │
 │  │                           Muni:   0101         │  │
 │  │                                                │  │
+│  │  ┌──────────────────────────────────────────┐  │  │
+│  │  │  [Leaflet map — OpenStreetMap tiles]     │  │  │
+│  │  │                                          │  │  │
+│  │  │          📍 Testvej 12                   │  │  │
+│  │  │         3,250,000 kr                     │  │  │
+│  │  │                                          │  │  │
+│  │  │  © OpenStreetMap contributors            │  │  │
+│  │  └──────────────────────────────────────────┘  │  │
+│  │                                                │  │
 │  │  Market context                                │  │
 │  │  Mortgage base rate: 3.35%  (Nationalbanken)   │  │
 │  │                                                │  │
@@ -206,13 +232,14 @@ WHERE ek.overdragelsesmåde        = 'Almindelig fri handel'
 │  │  Nabovej 4     3,100,000 kr  138 m²  Mar 2025 │  │
 │  │  Sidegaden 7   3,400,000 kr  151 m²  Jan 2025 │  │
 │  │  ...                                           │  │
-│  │                              [Save to history] │  │
 │  └────────────────────────────────────────────────┘  │
 │                                                      │
 │  My estimate history                                 │
 │  Testvej 12 · 3,250,000 kr · 13 May 2026       [×]  │
 └──────────────────────────────────────────────────────┘
 ```
+
+Map shows a single marker at the subject property. Clicking the marker opens a popup with address and estimated price. Attribution "© OpenStreetMap contributors" is required by the OSM tile ToS and rendered by Leaflet automatically.
 
 ## Implementation Plan
 
@@ -227,6 +254,7 @@ WHERE ek.overdragelsesmåde        = 'Almindelig fri handel'
 - [ ] Add `/estimate` route to `App.tsx`
 - [ ] `AddressSearch` component — debounced autocomplete
 - [ ] `EstimateCard` — price, property facts, comparables table, rate
+- [ ] `PropertyMap` component — Leaflet map with single marker; popup shows address + estimated price; hidden when `coordinates` absent
 - [ ] `EstimateHistory` — list with delete
 
 ### Phase 4: Verify
@@ -256,6 +284,8 @@ New `/estimate` route in the existing React app, gated behind auth. No feature f
 - geo-sif read access for: `Stag_Datafordeler_EJF`, `Stag_Datafordeler_BBR`, `Stag_Datafordeler_DAR` (connection strings as Edge Function secrets)
 - Danmarks Nationalbank open REST API (no key required)
 - Supabase Edge Functions (Deno runtime)
+- `leaflet` + `react-leaflet` (frontend, no API key required)
+- OpenStreetMap tile service — no API key; attribution required
 
 ## Risks & Mitigations
 
@@ -273,6 +303,7 @@ New `/estimate` route in the existing React app, gated behind auth. No feature f
 - [x] **Does `BygningEjendomsrelation` expose `ejendomsrelation` as a FK column?** No — the join is `Ejendomsrelation.id_lokalId = BygningEjendomsrelation.bygningPåFremmedGrund`, then `BygningEjendomsrelation.bygning = Bygning.id_lokalId`. Verified against live data.
 - [x] **Address search join path confirmed:** `DAR.Husnummer.adgangTilBygning = BBR.Bygning.id_lokalId` → `BygningEjendomsrelation.bygning` → `Ejendomsrelation.bfeNummer`. `Husnummer.adgangsadressebetegnelse` is a pre-formatted full address string — no join to `NavngivenVej`/`Postnummer` needed. Verified live: "Rådhuspladsen 7, 1550 København V" → BFE 100654163.
 - [x] **Nationalbank API:** POST to `https://api.statbank.dk/v1/data` with body `{"table":"DNRENTM","format":"JSON","lang":"en","variables":[{"code":"INSTRUMENT","values":["OIRNAA"]},{"code":"Tid","values":["*"]}]}`. Lending rate variable code: `OIRNAA`. Value field in response: `INDHOLD`.
+- [ ] **BBR coordinate column names:** Confirm exact names of `byg404Koordinat_x/y` columns in live `Stag_Datafordeler_BBR.dbo.Bygning` schema and verify values are in ETRS89/UTM32N (EPSG:25832). Required before implementing coordinate conversion in the Edge Function.
 
 ## References
 
