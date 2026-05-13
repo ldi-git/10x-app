@@ -18,10 +18,12 @@ const MOCK_ADDRESSES = [
   { bfe_number: 400301001, display: 'Algade 33, 9000 Aalborg' },
   { bfe_number: 500401001, display: 'Skomagergade 14, 4000 Roskilde' },
   { bfe_number: 600501001, display: 'Skolegade 5, 7100 Vejle' },
+  { bfe_number: 2379339,   display: 'Pilegårdsparken 87, 3460 Birkerød' },
 ]
 
 function getConfig(): sql.config {
-  const raw = Deno.env.get('GEO_SIF_CONN')!
+  const raw = Deno.env.get('GEO_SIF_CONN')
+  if (!raw) throw new Error('GEO_SIF_CONN secret is not configured')
   const parts = Object.fromEntries(
     raw.split(';').filter(Boolean).map((s) => {
       const idx = s.indexOf('=')
@@ -80,7 +82,16 @@ serve(async (req) => {
     })
   }
 
-  const pool = await sql.connect(getConfig())
+  let pool: sql.ConnectionPool
+  try {
+    pool = await sql.connect(getConfig())
+  } catch (err) {
+    console.error('Failed to connect to geo-sif:', err instanceof Error ? err.message : err)
+    return new Response(JSON.stringify({ error: 'Database connection failed' }), {
+      status: 500,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
   try {
     const result = await pool.request()
       .input('q', sql.NVarChar, `%${q}%`)
