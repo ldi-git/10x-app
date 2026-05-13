@@ -93,6 +93,7 @@ serve(async (req) => {
           AND ber.registreringTil IS NULL
           AND er.registreringTil IS NULL
           AND er.bfeNummer IS NOT NULL
+          AND b.byg021BygningensAnvendelse BETWEEN 110 AND 199
           AND hn.adgangsadressebetegnelse LIKE @q
       `)
 

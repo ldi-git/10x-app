@@ -537,12 +537,11 @@ serve(async (req) => {
         comparables = await findComparablesByMunicipality(pool, kommunekode, building_use, living_area_m2, true)
       }
     }
-    const limitedData = comparables.length < 5
-
     const pricePerM2Values = comparables
       .filter((c) => c.living_area_m2 > 0)
       .map((c) => c.sale_price / c.living_area_m2)
     const filteredComparableCount = pricePerM2Values.length
+    const limitedData = filteredComparableCount < 5
 
     const pricePerM2 = Math.round(median(pricePerM2Values))
     if (isNaN(pricePerM2)) {
