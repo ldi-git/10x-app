@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Session } from '@supabase/supabase-js'
+import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 import Auth from './components/Auth'
 import Dashboard from './components/Dashboard'
@@ -27,7 +27,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>10x App</h1>
+        <h1>Geomatic</h1>
         {session && (
           <button onClick={() => supabase.auth.signOut()} className="sign-out">
             Sign out
