@@ -343,6 +343,12 @@ export interface EstimateHandlerDeps {
 
 export async function handler(req: Request, deps: EstimateHandlerDeps = {}): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
 
   const authHeader = req.headers.get('authorization')
   if (!authHeader) {
@@ -376,7 +382,7 @@ export async function handler(req: Request, deps: EstimateHandlerDeps = {}): Pro
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
-  if (!Number.isInteger(bfe_number) || bfe_number <= 0) {
+  if (!Number.isInteger(bfe_number) || bfe_number <= 0 || bfe_number > Number.MAX_SAFE_INTEGER) {
     return new Response(JSON.stringify({ error: 'bfe_number must be a positive integer' }), {
       status: 400,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -384,12 +390,12 @@ export async function handler(req: Request, deps: EstimateHandlerDeps = {}): Pro
   }
 
   if (Deno.env.get('MOCK_GEO_SIF') === 'true') {
-    const prop = MOCK_PROPERTIES[bfe_number] ?? {
-      address: `BFE ${bfe_number}`,
-      living_area_m2: 130,
-      build_year: 1972,
-      building_use: 120,
-      municipality_code: '0101',
+    const prop = MOCK_PROPERTIES[bfe_number]
+    if (!prop) {
+      return new Response(JSON.stringify({ error: 'Property not found' }), {
+        status: 404,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
     }
     const comparablesKey = `${prop.municipality_code}_${prop.building_use}`
     const mockComparables = MOCK_COMPARABLES[comparablesKey] ?? MOCK_COMPARABLES['0101_120']
